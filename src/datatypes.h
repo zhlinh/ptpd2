@@ -1,3 +1,7 @@
+/**
+ * 特定数据结构的定义
+ */
+
 #ifndef DATATYPES_H_
 #define DATATYPES_H_
 

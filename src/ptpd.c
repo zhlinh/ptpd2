@@ -1,3 +1,8 @@
+/**
+ * PTP守护进程的入口-main()函数
+ * 启动PTP引擎，定义ptpclock全局变量
+ */
+
 /*-
  * Copyright (c) 2012-2013 Wojciech Owczarek,
  * Copyright (c) 2011-2012 George V. Neville-Neil,

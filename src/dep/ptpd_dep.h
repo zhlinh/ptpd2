@@ -1,4 +1,8 @@
 /**
+ * 函数预定义的头文件，以便被其他文件引用
+ */
+
+/**
  * @file   ptpd_dep.h
  * 
  * @brief  External definitions for inclusion elsewhere.

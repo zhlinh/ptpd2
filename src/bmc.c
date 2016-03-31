@@ -1,3 +1,8 @@
+/**
+ * 选择最佳主时钟的算法
+ * 主要由函数bmc()构成。经过仲裁后，返回设备的主、从状态。
+ */
+
 /*-
  * Copyright (c) 2012-2015 Wojciech Owczarek,
  * Copyright (c) 2011-2012 George V. Neville-Neil,

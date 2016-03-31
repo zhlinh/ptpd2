@@ -1,3 +1,7 @@
+/**
+ * 守护进程启动的初始化，包括启动时用户输入的相关配置选项的处理
+ */
+
 /*-
  * Copyright (c) 2014-2015 Wojciech Owczarek,
  * Copyright (c) 2012-2013 George V. Neville-Neil,

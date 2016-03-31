@@ -1,3 +1,7 @@
+/**
+ * 根据协议定义的格式，封装同步报文，并对接收的报文进行解析
+ */
+
 /*-
  * Copyright (c) 2011-2012 George V. Neville-Neil,
  *                         Steven Kreuzer, 

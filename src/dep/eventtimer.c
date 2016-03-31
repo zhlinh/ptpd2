@@ -1,3 +1,8 @@
+/**
+ * 控制主时钟发送Sync报文和从时钟发送Delay Req报文的周期
+ * 以及最佳主时钟算法和Sync报文接收超时
+ */
+
 /*-
  * Copyright (c) 2015      Wojciech Owczarek,
  *

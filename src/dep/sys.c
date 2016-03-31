@@ -1,3 +1,7 @@
+/**
+ * 调用内核时间，将统计数据写入文件
+ */
+
 /*-
  * Copyright (c) 2012-2015 Wojciech Owczarek,
  * Copyright (c) 2011-2012 George V. Neville-Neil,

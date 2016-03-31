@@ -1,3 +1,7 @@
+/**
+ * 时间格式转换以及一些数学运算工具函数
+ */
+
 /*-
  * Copyright (c) 2011-2012 George V. Neville-Neil,
  *                         Steven Kreuzer, 

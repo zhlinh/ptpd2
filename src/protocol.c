@@ -1,3 +1,7 @@
+/**
+ * IEEE1588协议和状态机的实现
+ */
+
 /*-
  * Copyright (c) 2012-2015 Wojciech Owczarek,
  * Copyright (c) 2011-2012 George V. Neville-Neil,
@@ -679,6 +683,10 @@ doInit(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	return TRUE;
 }
 
+/**
+ * doState()完成协议每个阶段的处理
+ */
+
 /* handle actions and events for 'port_state' */
 static void 
 doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
@@ -1163,7 +1171,9 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
 	ptpClock->counters.messageFormatErrors++;
 	return;
     }
-
+    /*
+     * 处理PTP报文的报头信息
+     */    
     msgUnpackHeader(ptpClock->msgIbuf, &ptpClock->msgTmpHeader);
 
     /* packet is not from self, and is from a non-zero source address - check ACLs */
@@ -1277,6 +1287,9 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
      *
      *  (SYNC / DELAY_REQ / PDELAY_REQ / PDELAY_RESP)
      */
+    /*
+     * 然后根据PTP报头的messageType分类处理报文
+     */  
     switch(ptpClock->msgTmpHeader.messageType)
     {
     case ANNOUNCE:
@@ -1332,6 +1345,9 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
 
 }
 
+/**
+ * 监听端口和接收数据包
+ */
 
 /* check and handle received messages */
 void
@@ -1345,6 +1361,9 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
     FD_ZERO(&readfds);
     if (!ptpClock->message_activity) {
+        /**
+         * 阻塞式接受数据包，包括两个socket: event和general
+         */  
 	ret = netSelect(NULL, &ptpClock->netPath, &readfds);
 	if (ret < 0) {
 	    PERROR("failed to poll sockets");
@@ -1399,6 +1418,11 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
     } else {
 #endif
 	if (FD_ISSET(ptpClock->netPath.eventSock, &readfds)) {
+            /**
+             * netSelect()返回后，用netRecvEvent来接收1588数据包
+             * 接收event和general，两种数据包不可能同时到达
+             * 所以收到的数据保存在ptpClock结构体的msgIbuf中
+             */
 	    length = netRecvEvent(ptpClock->msgIbuf, &timeStamp, 
 		          &ptpClock->netPath, 0);
 	    if (length < 0) {
@@ -1415,6 +1439,11 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	}
 
 	if (FD_ISSET(ptpClock->netPath.generalSock, &readfds)) {
+            /**
+             * netSelect()返回后，用netRecvGeneral来接收1588数据包
+             * 接收event和general，两种数据包不可能同时到达
+             * 所以收到的数据保存在ptpClock结构体的msgIbuf中
+             */
 	    length = netRecvGeneral(ptpClock->msgIbuf, &ptpClock->netPath);
 	    if (length < 0) {
 		PERROR("failed to receive on the general socket");
@@ -1422,6 +1451,9 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		ptpClock->counters.messageRecvErrors++;
 		return;
 	    }
+            /*
+             * 处理接收到的PTP报文，至此handle()处理结束
+             */  
 	    processMessage(rtOpts, ptpClock, &timeStamp, length);
 	}
 #ifdef PTPD_PCAP
@@ -3244,6 +3276,9 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	 * call GTOD. This time is later replaced in handleDelayReq,
 	 * to get the actual send timestamp from the OS
 	 */
+        /*
+         * 获取当前系统时间
+         */
 	getTime(&internalTime);
 	if (respectUtcOffset(rtOpts, ptpClock) == TRUE) {
 		internalTime.seconds += ptpClock->timePropertiesDS.currentUtcOffset;
@@ -3251,6 +3286,9 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	fromInternalTime(&internalTime,&originTimestamp);
 
 	// uses current sentDelayReqSequenceId
+        /*
+         * 将当前系统时间pack进报文中
+         */
 	msgPackDelayReq(ptpClock->msgObuf,&originTimestamp,ptpClock);
 
 	Integer32 dst = 0;
@@ -3259,7 +3297,9 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
         if (rtOpts->ipMode == IPMODE_HYBRID || rtOpts->ipMode == IPMODE_UNICAST) {
     		dst = ptpClock->masterAddr;
         }
-
+        /*
+         * 然后调用netSendEvent发送
+         */
 	if (!netSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
 			  &ptpClock->netPath, rtOpts, dst, &internalTime)) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);

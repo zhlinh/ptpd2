@@ -1,3 +1,9 @@
+/**
+ * 网络套接字socket和网卡驱动间的通信
+ * 初始化相关socket，收发相关的网络数据
+ * 这也是添加时间戳之处
+ */
+
 /*-
  * Copyright (c) 2014      Wojciech Owczarek,
  *                         George V. Neville-Neil
@@ -678,6 +684,11 @@ failure:
 	DBG("net.c: SO_TIMESTAMPING TX software timestamp failure - reverting to SO_TIMESTAMPNS\n");
 	/* unset SO_TIMESTAMPING first! otherwise we get an always-exiting select! */
 	val = 0;
+    /**
+     * 配置套接字选项
+     * 第二个参数为level，为SOL_SOCKET，即所要配置的层为套接字层
+     * 第三个参数表示设置添加时间戳
+     */
 	if(setsockopt(netPath->eventSock, SOL_SOCKET, SO_TIMESTAMPING, &val, sizeof(int)) < 0) {
 		DBG("getTxTimestamp: failed to unset SO_TIMESTAMPING");
 	}

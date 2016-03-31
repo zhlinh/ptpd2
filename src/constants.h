@@ -1,3 +1,7 @@
+/**
+ * ptpd2使用的默认参数和静态常量
+ */ 
+
 #ifndef CONSTANTS_H_
 #define CONSTANTS_H_
 

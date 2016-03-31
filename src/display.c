@@ -1,3 +1,7 @@
+/**
+ * 打印内部数据的通用函数
+ */
+
 /*-
  * Copyright (c) 2012-2013 George V. Neville-Neil,
  *                         Wojciech Owczarek
