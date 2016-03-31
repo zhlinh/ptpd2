@@ -1,0 +1,327 @@
+2013-06-10  Wojciech Owczarek <wojciech@owczarek.co.uk>
+
+	* 2.3.1 release
+
+	* New features since 2.3.0: 
+
+	- full unicast support both in master and in slave mode:
+	  + support for multiple unicast destinations for masters
+	  + feature-complete Telecom Profile support:
+	     * unicast negotiation for masters and slaves
+	     * disabling BMCA for masters (also works for multicast)
+	     * support for slaves with masters in multiple domains
+	     * influencing slave BMCA with local preference
+	     * serving multiple Telecom slaves at different rates
+	     * slaves correctly negotiate message rates over supported
+	       range of intervals until an acceptable interval is granted
+	  + support for unicast Peer Delay target - exotic use case
+	- greatly improved network robustness
+	- added support for slave-only builds (configure --slave-only):
+	  allows building a binary incapable of running as master
+	- simple failover mechanism - ptpengine:backup_interface
+	- ptpengine:max_delay_max_rejected setting to unblock ptpd
+	  rejecting all messages when max_delay set
+	- ptpengine:max_delay_stable to only use max_dely when clock
+	  is stable
+	- selectable log timestamp format (unix or datetime)
+	- ptpd now compiles and runs out of he box on NetBSD, OpenBSD, FreeBSD,
+	  OSX and Solaris and its derivatives (OpenIndiana, OmniOS etc.)
+	- major rework of the ACL code
+	- outlier filter auto-tune to improve operation in noisy environments(high PDV)
+	- added support for statistical filters (min/mean/median) for sync 
+	  and delay messages - min or median can be used in envifonments with high PDV
+	- added small step detection (millisecond level)
+	- added ptpengine:clock_update_timeout setting to reset slave
+	  if no clock updates for a period of time
+	- when running slave-only in unicast mode, unicast address
+	  does not have to be specified - ptpd will wait for a GM and latch onto it
+	- automatic Delay Request override for Hybrid and Unicast modes
+	- added options allowing to step the clock on startup
+	- improved sequence and re-ordering checks
+	- added support for "any domain" operation where ptpd will sync with
+	  any available domain
+	- idle timeout (PTPd hands over clock control)
+	- clock update timeout (PTPd restarts slave on timeout)
+	- maximum state machine reset count - full network restart when exceeded:
+	  allows ptpd to survive situations where network interface is removed,
+	  shut down or IP address changes
+	- support for NIST/IETF leap seconds file both for master and slave
+	- configurable leap second handling: accept, ignore, step
+	- support for leap second smear for slave operation
+	- option to step clock on startup
+	- TimingDomain API: all NTP failover code removed
+	  in favour of a generic interface for multiple time controllers.
+	- configurable port number - useful when running multiple instances
+	- periodic log file updates with slave or master information - separate
+	  from statistics file: allows sending statistics into syslog
+	- support for software transmit timestamping on Linux
+	- lookup tables used for matching Sync and FollowUp when
+	  no transport information available
+	- added periodic status updates to log file (global:periodic_updates)
+	- status file will always display counters for common error events
+	  if they are non-zero (includes denied unicast grants and ignored
+	  Announce resulting from rejected UTC properties)
+	- reporting on message receive and transmit rates
+	  in the status file
+	- restored compatibility with 802.1AS
+
+	* Bug fixes / improvements since 2.3.0:
+
+	- added CentOS / RHEL 7.x support
+	- statistics code enabled by default - can be disabled
+	- NTPd failover code enabled by default - can be disabled
+	- Improved status file - more error conditions included,
+	  message performance statistics included
+	- Rewritten timer subsystem allowing for easily implementing
+	  other implementations: included is the old interval timer implementation,
+	  and new (now default), POSIX timer implementation. This allows for
+	  fully standards-compliant message rates. This can be disabled with
+	  a configure flag
+	- ptpd now usable on systems with no adjtimex() call like OSX,
+	  OpenBSD and LynxOS ()
+	- moving standard deviation algorithm fix improving the outlier
+	  filters
+	- major servo.c spaghetti code cleanups
+	- network code cleanup
+	- fixed bug #66 - Ethernet interfaces no longer need IP addresses
+	  to run PTP Ethernet transport
+	- fixed bug / feature request #21: timestamping initialisation on
+	  PHC kernels
+	- fixed bug where ptpd would cause 100% CPU usage because of a 
+	  late TX timestamp
+	- fixed bug / feature request #22: prevent FMR from overwriting
+	   best master
+	- improved servo stability detection: servo no longer reporting
+	  stable when discarding most samples or heavily slewing
+	- ptpd will now join and leave multicast groups only when running
+	  multicast or hybrid: allows running unicast and multicast
+	  independently
+	- ptpd will now ignore unicast packets in multicast-only mode
+	  and vice versa. In hybrid mode, only unicast Delay Request /
+	  response is accepted; multicast management messages are always
+	  accepted
+	- further autoconf improvements across all supported OSes
+	- added missing files to distribution
+	- ptpd will now recover even from critical network failures,
+	  such as reloading drivers
+	- remaining memory leaks fixed
+	- more code cleanup, no more ajtimex() and similar calls in protocol.c
+	- some refactoring, constified rtOpts wherever possible
+	- less "dramatic" warnings about drift file
+	  and clock stability detection
+	- fixed unnecessary TX timestamp attempts in PCAP mode
+	- fixed issue where drift file would not be correctly
+	  written on exit under certain conditions
+	- other minor bugs fixed
+
+2013-11-22  George Neville-Neil  <gnn@neville-neil.com>, Wojciech Owczarek <wojciech@owczarek.co.uk>
+
+	* 2.3.0 release
+
+	* New Features:
+	
+	- IEEE 802.3 Support
+	- Support for reading from the Berkeley Packet Filter, resulting in lower jitter
+	- Configuration file support, multiple previously unsupported options
+	- Rewritten command line parameter handling, new parameters
+	- Command line options to print default configuration, print lock file,	check configuration and more,
+	- Full help (-H) for all configuration options,
+	- Configuration reload support with SIGHUP,
+	- Rewritten logging subsystem, 
+	- Separate log file and statistics file, SIGHUP reprints the headers
+  	- Support for mode and interface specific lock files
+	- Network interface checks before startup and during config reload
+	- Added ./configure --sigusr2=counters - will dump PTP engine countersto current log target when SIGUSR2 received
+	- Support for presets - groups of PTP protocol options defining	ptpd behaviour
+		presets available: slaveonly, masteronly, masterslave
+	- Support for tick adjustment as well as frequency
+		maximum frequency offset is now configurable and can be above 512 ppm - tick is used above 512 ppm,
+	- Added a compatibility option to always honour the UTC offset announced by a GM when in slave state
+	- Added an announce receipt timeout "grace period" for slave state
+	  	slave can wait n times timeout without fully resetting
+	  	allows a seamless failover without resetting delay values etc.,
+	- Added support for DELAY_DISABLED delay mode - syntonisation only
+	- Initial support for informing the clock subsystem about the sync status
+		STA_UNSYNC is unset when adjusting the clock (allows syncing hardware RTC clocks with the system clock)
+		also maxerror and esterror are set,
+	- Support for RTC clock control on Linux
+	- Support for legacy command line switches from previous versions
+	- Configurable log level for normal logs, not only debug logs.
+	- Generic log file handler mechanism with a simple built-in logrotate implementation
+		for each log file container you can specify max size and max number of files
+	- Extensive support for realtime statistics
+	  	online long term statistics and moving statistics 
+	  	mean and std dev. 
+	  		Some new features included depend on statistics support, enabled with the --enable-statistics
+	  		configure switch. Statistics rely on double precision so may be disabled for simple embedded systems
+	- Outlier filters based on Peirce's criterion 
+	  blocks / filters spikes from delayMS and delaySM 
+	- Generic PI controler model
+	- P and I components changed from attenuations to gains
+	- Double precision servo allows for tighter clock control
+	- Clock stabilisation detection based on the standard dev of observed drift
+	- Clock "calibration delay" 
+		allows a configurable delay between seeing a GM for the first time and enabling clock control
+	- Realtime statistics - mean and std dev of one-way delay, ofm and observed drift
+	- Status file: one-screen dump of information about the current state of ptpd, updated in configurable intervals.
+	- Support for "panic mode"
+		if ptpd sees offset from master above 1 second, it will pause clock updates for a given amount of time
+	- NTPd integration and failover
+		ptpd can now connect to local ntpd using mode 7 packets (code derived from ntpdc)
+	  	and using authenticated requests can enable/disable ntpd clock control.
+	  		Enable with configure --enable-ntpdc
+	- Dump counters + clear counters using a SIGUSR2 handler to dump all counters to the log file
+	  	configure --enable-sigusr2=counters
+	- Support for ACLs for management and timing messages
+	- Basic support for SO_TIMESTAMPING (RX, TX) on Linux
+	- Support for non-Ethernet interfaces on Linux (Infiniband, GRE etc.)
+	- Support for offset / delay asymmetry correction
+	- Ptpd can now prefer or require GMs with valid UTC time
+	- Support for setting IP DSCP values
+	- Periodic IGMP joins also in master mode - improved robustness against network port failures
+	- Support for binding PTPd to a CPU core
+	- Control over tick rate on Linux, allowing faster clock slewing if needed
+
+
+	  		  
+	* Bug fixes:
+	
+	- TTL no longer defaults to 64 in P2P mode - in P2P it's set to 1,
+	- Fixed an issue whereby observed drift would be reset to 0 if it
+	  could not be read from the drift file (empty or nonexistent drift file),
+	  now the kernel value is used if read from file fails.
+	 - Support for updating utmp/wtmp when stepping the clock (FR #38)
+	 - Mean Path Delay filtering now done in float (patch #49)
+	 - Multiple other SourceForge bugs closed: Bugs closed:
+
+		    #25, #34, #26, #42, #39, #33, #46, #45, #28, 
+		    #27, #48, #54, #47, #40, #37, #53, #50, #52, #59, #60 
+	
+	* Cleanups and other changes:
+	
+	- Major startup.c cleanup, removed the parallel daemon checks,
+	  in favour of better lock handling and the automatic lock file
+	  name support,
+	- Some minor refactoring,
+	- Added a TimePropertiesDS structure and removed its fields
+	  from PtpClock
+	- Improved log file format with full date and interface name,
+	  removed the "===" indents
+	- Delay Request interval no longer mandatory in hybrid mode,
+	  but a warning will be issued if it's not explicitly defined -
+	  default of 0 is used,
+	- Removed the experimental status of hybrid mode,
+	- Manual stepping of the clock no longer just resets the observed
+	  drift: resets it or restores it based on the drift handling setting,
+	  and sets the time immediately before writing any logs - this allows
+	  to re-sync and stabilise time almost instantly
+	- Up to date man pages written
+	  
+2012-06-20  George Neville-Neil  <gnn@neville-neil.com>
+
+	* 2.2.2 release
+
+	* Leap second fix
+	
+2012-01-05  George Neville-Neil  <gnn@neville-neil.com>
+
+	* 2.2.0 release
+
+	* Patches: 3134556, 3296405
+
+	* Added support for Mac OS X (tested on Snow Leopard and Lion)
+
+	* Protocol implementation Fixes:
+
+	* Bugs Fixed
+
+	- Client now correctly accepts the Master DelayReq rate
+	- DelayMS and delaySM now correctly show the sign when negative
+	- Sanity Flags: client now requires -g or -G for slave/master operation.
+	- Client can print the MAC address of its master (instead of EEUI)
+	- master now sends ARB timescale only with utc_offset of zero
+	- slave now only uses the last UTC_Offset if UTC_Valid bit is on.
+	- passive masters no longer become active every 12s,
+	- first delayreq is postponed until we receive the first sync
+	- -G (master with ntpd) now announces a better clock class of 13
+	- delayReq period is now uniformly randomized from range
+	- updated to the PTPv2 messages rates (sync / delayreq / announce )
+	- operator is warned once when the we slew the clock at maximum speed
+	- and several others too minor too mention
+
+	* System fixes and new features
+
+	- Frequency adjustment is now calculated in double precision
+	- Kernel timestamps are now in nanoseconds precision
+	- Timer system overhead was reduced to 16 alarms per second (was 1000)
+	- each reset now generates an IGMP leave/join operation to
+	  the multicast group
+	- Log file is now appended, with the right permissions
+	- Debug messages show a timestamp
+	- Signals are now processed synchronously (to avoid race conditions)
+	- Configurable amount of logging (to avoid filling up /var/log)
+	- client now checks own filelock, $0 and well-known daemons.
+	- unicast messages can use DNS
+	- syslog support (-S)
+	- quality file can be generated with received syncs (-R)
+	- messages can be dumped for debug (-P)
+	- gnore packets that result in large deltas (-M)
+	- SIGUSR1 now steps the clock to the current PTP offset
+	- SIGUSR2 now cycles the domain number (useful for testing)
+	- reverted R135 timer change from integer back to floating point
+	- rand() is now seeded with last digits of our own mac address
+	- IGMP_refresh waits 100ms between drop() and add()
+	- checked to run without leaks inside valgrind 3.5.0
+	- last message received is identified by a column on the statistics log
+	- messages are sent to Syslog by default. reversed -S flag
+	- statistcs file now display /etc/ethers names (besides mac address)
+	- option -C is console mode with full verbosity
+	- startup warnings are also duplicated in stdout
+	- startup: lockfile is checked twice: once at init, to return
+	  correct errorlevel, and a second time after deaemon()
+	- check for root uid()
+	- improvements in parallel daemons checking
+	- command line parameters are dumped at init
+	- Set the unicast flag when sending unicast packets
+	  (experimental, hybrid mode only).
+
+	- Reimplemented integer64_to_internalTime not to use doubles
+	- Replaced divTime by div2Time
+	- Replaced all time.seconds = time.nanoseconds = 0 by clearTime(&time)
+	- Replaced all hex values by named flags
+	- Optimized comparison of clockIdentity in bmc.c
+	- Resolved issue of comparison of offsetScaledLogVariance 
+	- Optimized bmcStateDecision not to call bmcDataSetComparison so often with the same parameters
+	- displayStats now uses getTime instead of gettimeofday
+
+2011-02-01  George Neville-Neil  <gnn@neville-neil.com>
+
+	* Add support for DNS lookup of timeserver for unicast.
+
+	* Add support for unicasting delay requests.
+
+	* Add code to dump packets on demand via the -P flag as well as in
+	response to updates that violate either the -M or -O flags.
+
+2010-10-12  George Neville-Neil  <gnn@neville-neil.com>
+
+	* 2.1.0 First main line release of PTPv2 code base
+	(IEEE-1588-2008)
+
+	* Add code to limit how much of an offset or delay the client is
+	willing to tolerate.
+
+	* Add support for BINTIME on FreeBSD which gives more accurate
+	packet timestamps.
+
+	* Add quality file support
+
+	* Fix significant bugs that prevented correct operation in
+	End-to-End mode.
+
+	* Add support for syslog.
+
+	* Add support for user configurable TTL.
+
+	* Clean up code formatting, headers, comments etc.
+
