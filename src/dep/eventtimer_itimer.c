@@ -1,3 +1,7 @@
+/**
+ * EventTimer基于interval timers的具体实现
+ */
+
 /*-
  * Copyright (c) 2012-2015 Wojciech Owczarek,
  * Copyright (c) 2011-2012 George V. Neville-Neil,
@@ -97,6 +101,13 @@ eventTimerStart_itimer(EventTimer *timer, double interval)
 	 *  timerStart has a float parameter for the interval, which is casted to integer.
 	 *  very small amounts are forced to expire ASAP by setting the interval to 1
 	 */
+	/**
+	 * 最小信号间隔为US_TIMER_INTERVAL(即(62500us))
+	 * 本函数的参数传入了double的参数interval，除以US_TIMER_INTERVAL得到一个整数的定时器剩余时间timer->itimerLeft
+	 * 即定时器剩余时间timer->itimerLeft的单位为最小信号间隔US_TIMER_INTERVAL
+	 * 如果得到的定时器剩余时间timer->itimerLeft为0，则将其设为1
+	 */
+
 	timer->itimerLeft = (interval * 1E6) / US_TIMER_INTERVAL;
 	if(timer->itimerLeft == 0){
 		/*
@@ -104,7 +115,10 @@ eventTimerStart_itimer(EventTimer *timer, double interval)
 		 */ 
 		timer->itimerLeft = 1;
 	}
-	
+
+	/**
+	 * 将定时器剩余时间timer->itimerLeft赋值给timer->itimerInterval
+	 */
 	timer->itimerInterval = timer->itimerLeft;
 
 	DBG2("timerStart:     Set timer %s to %f  New interval: %d; new left: %d\n", timer->id, interval, timer->itimerLeft , timer->itimerInterval);
@@ -120,12 +134,20 @@ eventTimerStop_itimer(EventTimer *timer)
 
 }
 
+/**
+ * eventTimerIsRunning_itimer()和eventTimerIsExpired_itimer()函数
+ * 都会调用itimerUpdate()
+ */
 static void
 itimerUpdate(EventTimer *et)
 {
 
 	EventTimer *timer = NULL;
 
+	/**
+	 * elapsed为本文件内部全局静态unsigned int变量
+	 * 时间没有真的流逝时(elapsed <= 0)直接返回
+	 */
 	if (elapsed <= 0)
 		return;
 
@@ -134,6 +156,13 @@ itimerUpdate(EventTimer *et)
 	 * the one(s) that went to zero or negative are:
 	 *  a) rearmed at the original time (ignoring the time that may have passed ahead)
 	 *  b) have their expiration latched until timerExpired() is called
+	 */
+	/**
+	 * 如果时间真的流逝了(elapsed > 0)，就减少每个定时器的剩余时间
+	 * 采用轮询的方式，如果定时器数量过多，则效率可能会比较低
+	 * 定时器剩余时间小于等于0的情况有:
+	 *  1) 更新原始时间(忽略了可能已经过去的时间)时
+	 *  2) 它们的到期被锁定时，直到timerExpired()被调用才会被解锁
 	 */
 
 	for(timer = et->_first; timer != NULL; timer = timer->_next) {
@@ -144,6 +173,9 @@ itimerUpdate(EventTimer *et)
 	    }
 	}
 
+	/**
+	 * 将elapsed清零重新累加
+	 */
 	elapsed = 0;
 
 }
@@ -186,6 +218,9 @@ eventTimerIsExpired_itimer(EventTimer *timer)
 	DBG2("timerIsExpired:   Timer %s %s expired\n", timer->id,
 		timer->expired ? "is" : "is not");
 
+	/**
+	 * 如果expired则将其重新置为FALSE
+	 */
 	if(ret) {
 	    timer->expired = FALSE;
 	}
@@ -201,6 +236,9 @@ startEventTimers(void)
 
 	DBG("initTimer\n");
 
+/**
+ * SIG_IGN表示忽略该信号量
+ */
 #ifdef __sun
 	sigset(SIGALRM, SIG_IGN);
 #else
@@ -212,11 +250,17 @@ startEventTimers(void)
 	itimer.it_value.tv_usec = itimer.it_interval.tv_usec = 
 	    US_TIMER_INTERVAL;
 
+/**
+ * 将SIGALRM的回调函数设置为timerSignalHandler
+ */
 #ifdef __sun
 	sigset(SIGALRM, timerSignalHandler);
 #else	
 	signal(SIGALRM, timerSignalHandler);
 #endif /* __sun */
+	/**
+	 * 设置定时器，间隔为US_TIMER_INTERVAL
+	 */
 	setitimer(ITIMER_REAL, &itimer, 0);
 }
 
@@ -224,6 +268,9 @@ void
 shutdownEventTimers(void)
 {
 
+/**
+ * SIG_IGN表示忽略该信号量
+ */
 #ifdef __sun
 	sigset(SIGALRM, SIG_IGN);
 #else
@@ -234,6 +281,10 @@ shutdownEventTimers(void)
 static void 
 timerSignalHandler(int sig)
 {
+	/**
+	 * 定时器的回调函数，作用为增加elapsed
+	 */
 	elapsed++;
 	/* be sure to NOT call DBG in asynchronous handlers! */
 }
+

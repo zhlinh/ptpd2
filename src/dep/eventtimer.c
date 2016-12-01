@@ -1,6 +1,6 @@
 /**
- * ������ʱ�ӷ���Sync���ĺʹ�ʱ�ӷ���Delay Req���ĵ�����
- * �Լ������ʱ���㷨��Sync���Ľ��ճ�ʱ
+ * 控制主时钟发送Sync报文和从时钟发送Delay Req报文的周期
+ * 以及最佳主时钟算法和Sync报文接收超时
  */
 
 /*-
@@ -57,11 +57,20 @@ EventTimer
         }
 
 
+	/**
+	 * 初始化EventTimer结构体。开辟空间，定义函数指针的具体引用
+	 */
 	setupEventTimer(timer);
 
+		/**
+		 * 给EventTimer结构体的id字符变量赋值
+		 */
         strncpy(timer->id, id, EVENTTIMER_MAX_DESC);
 
 	/* maintain the linked list */
+	/**
+	 * 将该EventTimer插入到链表中，且链表中的每个元素都会维护一个_first指针
+	 */
 
 	if(_first == NULL) {
 		_first = timer;
@@ -95,9 +104,15 @@ freeEventTimer
 	    return;
 	}
 
+	/**
+	 * 目前该Event->shutdown函数为空函数
+	 */
 	ptimer->shutdown(ptimer);
 
 	/* maintain the linked list */
+	/**
+	 * 从列表中删除该EventTimer，并维护_first指针
+	 */
 
 	if(ptimer->_prev != NULL) {
 
@@ -129,6 +144,9 @@ freeEventTimer
 
 	} 
 
+	/**
+	 * 释放该EventTimer的内存空间
+	 */
 	if(*timer != NULL) {
 	    free(*timer);
 	}
@@ -136,3 +154,4 @@ freeEventTimer
 	*timer = NULL;
 
 }
+

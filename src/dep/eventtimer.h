@@ -34,6 +34,9 @@
 
 typedef struct EventTimer EventTimer;
 
+/**
+ * 主要的定时器EventTimer结构体的定义
+ */
 struct EventTimer {
 
 	/* data */

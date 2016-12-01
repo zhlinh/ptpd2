@@ -1,3 +1,7 @@
+/**
+ * EventTimer基于posix timers的具体实现
+ */
+
 /*-
  * Copyright (c) 2015      Wojciech Owczarek,
  *
@@ -105,6 +109,9 @@ eventTimerStart_posix(EventTimer *timer, double interval)
 	its.it_interval = ts;
 	its.it_value = ts;
 
+	/**
+	 * 设置posix定时器，间隔为its(即interval)
+	 */
 	if (timer_settime(timer->timerId, 0, &its, NULL) < 0) {
 		PERROR("could not arm posix timer %s", timer->id);
 		return;
@@ -127,6 +134,9 @@ eventTimerStop_posix(EventTimer *timer)
 
 	memset(&its, 0, sizeof(its));
 
+	/**
+	 * 取消posix定时器，即将间隔its赋值为0
+	 */
 	if (timer_settime(timer->timerId, 0, &its, NULL) < 0) {
 		PERROR("could not stop posix timer %s", timer->id);
 		return;
@@ -189,6 +199,9 @@ startEventTimers(void)
 
 	DBG("initTimer\n");
 
+/**
+ * SIG_IGN表示忽略该信号量
+ */
 #ifdef __sun
 	sigset(SIGALRM, SIG_IGN);
 #else
@@ -198,6 +211,9 @@ startEventTimers(void)
 	sa.sa_flags = SA_SIGINFO;
 	sa.sa_sigaction = timerSignalHandler;
 	sigemptyset(&sa.sa_mask);
+	/**
+	 * 将SIGALRM的回调函数设置为timerSignalHandler
+	 */
 	if(sigaction(TIMER_SIGNAL, &sa, NULL) == -1) {
 	    PERROR("Could not initialise timer handler");
 	}
@@ -208,6 +224,9 @@ void
 shutdownEventTimers(void)
 {
 
+/**
+ * SIG_IGN表示忽略该信号量
+ */
 #ifdef __sun
 	sigset(SIGALRM, SIG_IGN);
 #else
@@ -227,9 +246,13 @@ timerSignalHandler(int sig, siginfo_t *info, void *usercontext)
 	if(info->si_code != SI_TIMER)
 		return;
 
+	/**
+	 * 设置定时器的回调函数，在定时器到期时被调用
+	 */
 	/* Hopkirk (deceased) */
 	if(timer != NULL) {
 	    timer->expired = TRUE;
 	}
 
 }
+
