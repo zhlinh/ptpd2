@@ -1351,10 +1351,16 @@ netSelect(TimeInternal * timeout, NetPath * netPath, fd_set *readfds)
 			ERROR("Negative timeout attempted for select()\n");
 			return -1;
 		}
+		/**
+		 * 设置监听sockets超时时间
+		 */
 		tv.tv_sec = timeout->seconds;
 		tv.tv_usec = timeout->nanoseconds / 1000;
 		tv_ptr = &tv;
 	} else {
+		/**
+		 * 如果传进来的参数@timeout为NULL，则监听sockets超时时间也为NULL
+		 */
 		tv_ptr = NULL;
 	}
 
@@ -1397,6 +1403,14 @@ if (rtOpts.snmp_enabled) {
 }
 #endif
 
+	/**
+	 * int select(int maxfdp, fd_set *readfds, fd_set *writefds, fd_set *errorfds,struct timeval *timeout);
+	 * @ndfs：select监视的文件句柄数
+	 * @readfds：select监视的可读文件句柄集合
+	 * @writefds: select监视的可写文件句柄集合
+	 * @exceptfds：select监视的异常文件句柄集合
+	 * @timeout：本次select()的超时结束时间，timeval结构体包含秒和微秒
+	 */
 	ret = select(nfds, readfds, 0, 0, tv_ptr);
 
 	if (ret < 0) {

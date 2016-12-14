@@ -1,6 +1,8 @@
 /**
- * 选择最佳主时钟的算法
- * 主要由函数bmc()构成。经过仲裁后，返回设备的主、从状态。
+ * 最佳主时钟算法
+ * 主要由函数bmc()、bmcDataSetComparison()、bmcStateDecision()构成。经过仲裁后，返回设备的主、从状态。
+ * 最佳主时钟算法(Best Master Clock Algorithm, BMC)由状态决定算法(State Decision Algorithm, SDA)
+ * 和数据集比较算法(Data set Comparison Algorithm, DCA)两部分组成。
  */
 
 /*-
@@ -206,6 +208,9 @@ Boolean portIdentityAllOnes(PortIdentity *portIdentity) {
 }
 
 /*Local clock is becoming Master. Table 13 (9.3.5) of the spec.*/
+/**
+ * 本地时钟即将进入PTP_MASTER状态
+ */
 void m1(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
 	/*Current data set update*/
@@ -254,6 +259,10 @@ void m1(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 
 /* first cut on a passive mode specific BMC actions */
+/**
+ * 如果当前处于PTP_PASSIVE状态时，
+ * 则将@currentUtcOffsetValid和@currentUtcOffset重置为初始化设置时的值
+ */
 void p1(PtpClock *ptpClock, const RunTimeOpts *rtOpts)
 {
 	/* make sure we revert to ARB timescale in Passive mode*/
@@ -266,6 +275,9 @@ void p1(PtpClock *ptpClock, const RunTimeOpts *rtOpts)
 
 
 /*Local clock is synchronized to Ebest Table 16 (9.3.5) of the spec*/
+/**
+ * 本时钟同步到最佳主时钟Ebest
+ */
 void s1(MsgHeader *header,MsgAnnounce *announce,PtpClock *ptpClock, const RunTimeOpts *rtOpts)
 {
 
@@ -276,9 +288,17 @@ void s1(MsgHeader *header,MsgAnnounce *announce,PtpClock *ptpClock, const RunTim
 
 	Integer16 previousUtcOffset = 0;
 
+	/**
+	 * Leap59: 为真时，上一分钟只有59秒(而不是60秒)
+	 * Leap61: 为真时，上一分钟只有61秒(而不是60秒)
+	 */
 	previousLeap59 = ptpClock->timePropertiesDS.leap59;
 	previousLeap61 = ptpClock->timePropertiesDS.leap61;
 
+	/**
+	* International Atomic Time (TAI)和Coordinated Universal Time (UTC)之间的差值
+	* 2012年1月时，该值为34秒
+	*/
 	previousUtcOffset = ptpClock->timePropertiesDS.currentUtcOffset;
 
 	/* Current DS */
@@ -322,9 +342,15 @@ void s1(MsgHeader *header,MsgAnnounce *announce,PtpClock *ptpClock, const RunTim
         ptpClock->timePropertiesDS.currentUtcOffsetValid = IS_SET(header->flagField1, UTCV);
 
 	/* set PTP_PASSIVE-specific state */
+	/**
+	 * 如果当前为PTP_PASSIVE状态，则重置@timePropertiesDS为初始化的设置值
+	 */
 	p1(ptpClock, rtOpts);
 
 	/* only set leap flags in slave state - info from leap file takes priority*/
+	/**
+	 * 只有当前为PTP_SLAVE状态，才更新@leap59和@leap61
+	 */
 	if (ptpClock->portState == PTP_SLAVE) {
 	    if(ptpClock->clockStatus.override) {
 		ptpClock->timePropertiesDS.currentUtcOffset = ptpClock->clockStatus.utcOffset;
@@ -424,6 +450,9 @@ void s1(MsgHeader *header,MsgAnnounce *announce,PtpClock *ptpClock, const RunTim
 
 
 /*Copy local data set into header and announce message. 9.3.4 table 12*/
+/**
+ * 复制本地的数据集到@header和@announce消息中
+ */
 static void
 copyD0(MsgHeader *header, MsgAnnounce *announce, PtpClock *ptpClock)
 {
@@ -454,7 +483,11 @@ copyD0(MsgHeader *header, MsgAnnounce *announce, PtpClock *ptpClock)
 
 /*Data set comparison bewteen two foreign masters (9.3.4 fig 27)
  * return similar to memcmp() */
-
+/**
+ * 比较两时钟的特性数据，值较小的则较好。
+ * 若前者较好则返回-1，后者较好返回1，相等则返回0
+ * Data set Comparison Algorithm (DCA)数据集比较算法
+ */
 static Integer8 
 bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UInteger8 localPrefA,
 		     const MsgHeader *headerB, const MsgAnnounce *announceB, UInteger8 localPrefB,
@@ -465,12 +498,22 @@ bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UIn
 	DBGV("Data set comparison \n");
 	short comp = 0;
 	/*Identity comparison*/
+	/** 
+	 * 比较两时钟的grandmasterIdentity，如果相同则表明处于同一个同步域中
+	 */
 	comp = memcmp(announceA->grandmasterIdentity,announceB->grandmasterIdentity,CLOCK_IDENTITY_LENGTH);
 
 	if (comp!=0)
+		/**
+		 * 如果两时钟处于不同的同步域
+		 */
 		goto dataset_comp_part_1;
 
 	  /* Algorithm part2 Fig 28 */
+	/** 
+	 * 如果两时钟到达grandmaster的的路径长度差大于1
+	 * 值较小的则较好，若A较小则返回-1，若B较小则返回1
+	 */	
 	if (announceA->stepsRemoved > announceB->stepsRemoved+1)
 		return 1;
 	if (announceA->stepsRemoved+1 < announceB->stepsRemoved)
@@ -478,8 +521,15 @@ bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UIn
 
 	/* A within 1 of B */
 
+	/** 
+	 * 如果两时钟的到达grandmaster的路径长度差小于等于1
+	 * 且B的路径长度较小
+	 */
 	if (announceA->stepsRemoved > announceB->stepsRemoved) {
-		comp = memcmp(headerA->sourcePortIdentity.clockIdentity,ptpClock->parentPortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH);
+		/** 
+		 * 如果A的clockIdentity小于本时钟的父时钟的clockIdentity则返回-1，大于则返回1，等于则返回0
+		 */
+		comp = memcmp(headerA->sourcePortIdentity.clockIdentity,ptpClock->parentPortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH);		
 		if(comp < 0)
 			return -1;
 		if(comp > 0)
@@ -488,9 +538,15 @@ bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UIn
 		return 0;
 	}
 
+	/** 
+	 * 如果两时钟的到达grandmaster的路径长度差小于等于1
+	 * 且A的路径长度较小
+	 */
 	if (announceA->stepsRemoved < announceB->stepsRemoved) {
+		/** 
+		 * 如果B的clockIdentity小于本时钟的父时钟的clockIdentity则返回-1，大于则返回1，等于则返回0
+		 */
 		comp = memcmp(headerB->sourcePortIdentity.clockIdentity,ptpClock->parentPortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH);
-
 		if(comp < 0)
 			return -1;
 		if(comp > 0)
@@ -499,6 +555,11 @@ bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UIn
 		return 0;
 	}
 	/*  steps removed A = steps removed B */
+	/** 
+	 * 两时钟的到达grandmaster的路径长度相等，
+	 * 则继续比较A和B的clockIdentity
+	 * 如果A的较小则返回-1，较大则返回1
+	 */
 	comp = memcmp(headerA->sourcePortIdentity.clockIdentity,headerB->sourcePortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH);
 
 	if (comp<0) {
@@ -510,7 +571,11 @@ bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UIn
 	}
 
 	/* identity A = identity B */
-
+	/**
+	 * 如果A的clockIdentity和B的clockIdentity相等，
+	 * 则继续比较A和B的portNumber
+	 * 如果A的较小则返回-1，较大则返回1，相等则返回0
+	 */
 	if (headerA->sourcePortIdentity.portNumber < headerB->sourcePortIdentity.portNumber)
 		return -1;
 	if (headerA->sourcePortIdentity.portNumber > headerB->sourcePortIdentity.portNumber)
@@ -523,15 +588,23 @@ bmcDataSetComparison(const MsgHeader *headerA, const MsgAnnounce *announceA, UIn
 dataset_comp_part_1:
 
 	/* OPTIONAL domain comparison / any domain */
-	
+	/**
+	 * 如果A和B处于不同的同步域时的比较
+	 */	
 	if(rtOpts->anyDomain) {
 	    /* part 1: preferred domain wins */
+		/**
+		 * 选择与初始化设置参数时相同的同步域
+		 */
 	    if(headerA->domainNumber == rtOpts->domainNumber && headerB->domainNumber != ptpClock->domainNumber)
 		return -1;
 	    if(headerA->domainNumber != rtOpts->domainNumber && headerB->domainNumber == ptpClock->domainNumber)
 		return 1;
 	
 	    /* part 2: lower domain wins */
+		/**
+		 * 选择domainNumber较小的同步域
+		 */
 	    if(headerA->domainNumber < headerB->domainNumber)
 		return -1;
 
@@ -541,6 +614,10 @@ dataset_comp_part_1:
 
 	/* Compare localPreference - only used by slaves when using unicast negotiation */
 	DBGV("bmcDataSetComparison localPrefA: %d, localPrefB: %d\n", localPrefA, localPrefB);
+	/**
+	 * 比较@localPreference，只有在slave使用单播协商时才会比较
+	 * 即@domainNuber相同，但@grandmasterIdentity不同的时候
+	 */
 	if(localPrefA < localPrefB) {
 	    return -1;
 	}
@@ -549,12 +626,20 @@ dataset_comp_part_1:
 	}
 
 	/* Compare GM priority1 */
+	/**
+	 * 比较A和B的@grandmasterPriority1
+	 */
 	if (announceA->grandmasterPriority1 < announceB->grandmasterPriority1)
 		return -1;
 	if (announceA->grandmasterPriority1 > announceB->grandmasterPriority1)
 		return 1;
 
 	/* non-standard BMC extension to prioritise GMs with UTC valid */
+	/**
+	 * 非标准BMC算法的额外自定义选择：是否选择倾向于使用世界标准时间(UTC, Coordinated Universal Time)
+	 * 而标准PTP是基于国际原子时间(TAI, International Atomic Time)
+	 * 标准PTP的grandmaster传输UTC和TAI间的偏移，可以从接收的PTP时间计算出UTC
+	 */
 	if(rtOpts->preferUtcValid) {
 		Boolean utcA = IS_SET(headerA->flagField1, UTCV);
 		Boolean utcB = IS_SET(headerB->flagField1, UTCV);
@@ -565,6 +650,9 @@ dataset_comp_part_1:
 	}
 
 	/* Compare GM class */
+	/**
+	 * 比较A和B的@grandmasterClockQuality.clockClass
+	 */
 	if (announceA->grandmasterClockQuality.clockClass <
 			announceB->grandmasterClockQuality.clockClass)
 		return -1;
@@ -573,6 +661,9 @@ dataset_comp_part_1:
 		return 1;
 	
 	/* Compare GM accuracy */
+	/**
+	 * 比较A和B的@grandmasterClockQuality.clockAccuracy
+	 */
 	if (announceA->grandmasterClockQuality.clockAccuracy <
 			announceB->grandmasterClockQuality.clockAccuracy)
 		return -1;
@@ -581,6 +672,9 @@ dataset_comp_part_1:
 		return 1;
 
 	/* Compare GM offsetScaledLogVariance */
+	/**
+	 * 比较A和B的@grandmasterClockQuality.offsetScaledLogVariance
+	 */
 	if (announceA->grandmasterClockQuality.offsetScaledLogVariance <
 			announceB->grandmasterClockQuality.offsetScaledLogVariance)
 		return -1;
@@ -589,12 +683,18 @@ dataset_comp_part_1:
 		return 1;
 	
 	/* Compare GM priority2 */
+	/**
+	 * 比较A和B的@grandmasterPriority2
+	 */
 	if (announceA->grandmasterPriority2 < announceB->grandmasterPriority2)
 		return -1;
 	if (announceA->grandmasterPriority2 > announceB->grandmasterPriority2)
 		return 1;
 
 	/* Compare GM identity */
+	/**
+	 * 比较A和B的@grandmasterIdentity
+	 */
 	if (comp < 0)
 		return -1;
 	else if (comp > 0)
@@ -603,6 +703,10 @@ dataset_comp_part_1:
 }
 
 /*State decision algorithm 9.3.3 Fig 26*/
+/**
+ * 返回当前应处于的状态
+ * State Decision Algorithm (SDA)状态决定算法
+ */	
 static UInteger8 
 bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPreference,
 		 const RunTimeOpts *rtOpts, PtpClock *ptpClock)
@@ -610,6 +714,9 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 	Integer8 comp;
 	Boolean newBM;
 	UInteger8 currentLocalPref = 0;	
+	/** 
+	 * 新收到的Announce Msg头部的master时钟的clockIdentity与当前的不同，且与父master时钟处于不同的端口时，newBM为真
+	 */
 	newBM = ((memcmp(header->sourcePortIdentity.clockIdentity,
 			    ptpClock->parentPortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH)) ||
 		(header->sourcePortIdentity.portNumber != ptpClock->parentPortIdentity.portNumber));
@@ -617,17 +724,29 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 	
 	if (ptpClock->slaveOnly) {
 		/* master has changed: mark old grants for cancellation - refreshUnicastGrants will pick this up */
+		/** 
+		 * 如果当前处于slave状态，则表明master时钟已经改变了
+		 * 返回PTP_SLAVE状态
+		 */
 		if(newBM && (ptpClock->parentGrants != NULL)) {
 		    ptpClock->previousGrants = ptpClock->parentGrants;
 		}
+		/** 
+		 * 更新timePropertiesDS的leap61，leap59等
+		 */
 		s1(header,announce,ptpClock, rtOpts);
 		if(rtOpts->unicastNegotiation) {
+			/** 
+			 * 如果是单播协商模式，则更新@parentGrants
+			 */
 			ptpClock->parentGrants = findUnicastGrants(&ptpClock->parentPortIdentity, 0,
 						ptpClock->unicastGrants, ptpClock->unicastGrantIndex, ptpClock->unicastDestinationCount ,
 					    FALSE);
 		}
 		if (newBM) {
-
+			/** 
+			 * 更新master的地址
+			 */
 			ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
 
 			displayPortIdentity(&header->sourcePortIdentity,
@@ -649,18 +768,47 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 
 	if ((!ptpClock->number_foreign_records) && 
 	    (ptpClock->portState == PTP_LISTENING))
+		/** 
+		 * 如果number_foreign_records为0且当前状态为PTP_LISTENING
+		 * 则返回PTP_LISTENING状态
+		 */
 		return PTP_LISTENING;
 
+	/**
+	 * 复制ptpClock的数据到Header和Announce Msg中
+	 */
 	copyD0(&ptpClock->msgTmpHeader,&ptpClock->msgTmp.announce,ptpClock);
 
 	DBGV("local clockQuality.clockClass: %d \n", ptpClock->clockQuality.clockClass);
 
+	/**
+	 * 比较本地时钟和外部时钟的特性数据，值较小的则较好。
+	 * 若前者较好则返回-1，后者较好返回1，相等则返回0
+	 * Data set Comparison Algorithm (DCA)数据集比较算法
+	 */
 	comp = bmcDataSetComparison(&ptpClock->msgTmpHeader, &ptpClock->msgTmp.announce, currentLocalPref, header, announce, localPreference, ptpClock, rtOpts);
+	/**
+	 * 如果本地时钟的clockClass小于128
+	 */
 	if (ptpClock->clockQuality.clockClass < 128) {
-		if (comp < 0) {
+		/**
+		 * 如果本地时钟比外部时钟的特性数据较好
+		 */
+		if (comp < 0) {		
+			/**
+			 * 本地时钟进入PTP_MASTER状态
+			 * 并返回PTP_MASTER状态
+			 */
 			m1(rtOpts, ptpClock);
 			return PTP_MASTER;
+		/** 
+		 * 如果本地时钟比外部时钟的特性数据较差
+		 */	
 		} else if (comp > 0) {
+			/** 
+			 * 更新timePropertiesDS的leap61，leap59等
+			 * 并返回PTP_PASSIVE状态 (本地时钟的clockClass小于128的情况下)
+			 */
 			s1(header,announce,ptpClock, rtOpts);
 			if (newBM) {
 				displayPortIdentity(&header->sourcePortIdentity,
@@ -673,11 +821,28 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 		} else {
 			DBG("Error in bmcDataSetComparison..\n");
 		}
+	/**
+	 * 如果本地时钟的clockClass大于等于128
+	 */
 	} else {
+		/**
+		 * 如果本地时钟比外部时钟的特性数据较好
+		 */
 		if (comp < 0) {
+			/**
+			 * 本地时钟进入PTP_MASTER状态
+			 * 并返回PTP_MASTER状态
+			 */
 			m1(rtOpts,ptpClock);
 			return PTP_MASTER;
+		/** 
+		 * 如果本地时钟比外部时钟的特性数据较差
+		 */
 		} else if (comp > 0) {
+			/** 
+			 * 更新timePropertiesDS的leap61，leap59等
+			 * 并返回PTP_SLAVE状态 (本地时钟的clockClass大于等于128的情况下)
+			 */
 			s1(header,announce,ptpClock, rtOpts);
 			if (newBM) {
 				displayPortIdentity(&header->sourcePortIdentity,
@@ -695,7 +860,10 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 			DBG("Error in bmcDataSetComparison..\n");
 		}
 	}
-
+	/** 
+	 * 如果Data set Comparison Algorithm (DCA)数据集比较算法出现等于0的情况
+	 * 则返回PTP_FAULTY状态
+	 */
 	ptpClock->counters.protocolErrors++;
 	/*  MB: Is this the return code below correct? */
 	/*  Anyway, it's a valid return code. */
@@ -704,7 +872,9 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 }
 
 
-
+/** 
+ * BMC(Best Master Clock Algorithm)最佳主时钟函数
+ */
 UInteger8 
 bmc(ForeignMasterRecord *foreignMaster,
     const RunTimeOpts *rtOpts, PtpClock *ptpClock)
@@ -712,13 +882,30 @@ bmc(ForeignMasterRecord *foreignMaster,
 	Integer16 i,best;
 
 	DBGV("number_foreign_records : %d \n", ptpClock->number_foreign_records);
+	/** 
+	 * 如果记录的外部时钟的个数为0
+	 */
 	if (!ptpClock->number_foreign_records)
+		/** 
+		 * 如果当前的状态为PTP_MASTER
+		 */
 		if (ptpClock->portState == PTP_MASTER)	{
+			/** 
+			 * 则将此时钟设为grandmaster
+			 */
 			m1(rtOpts,ptpClock);
 			return ptpClock->portState;
 		}
 
+	/** 
+	 * 如果记录的外部时钟的个数为0
+	 */
 	for (i=1,best = 0; i<ptpClock->number_foreign_records;i++)
+		/** 
+		 * 进入Data set Comparison Algorithm (DCA)数据集比较算法
+		 * 值较小的则较好，即返回-1，则表明前者较好
+		 * 选出最佳的外部时钟
+		 */		
 		if ((bmcDataSetComparison(&foreignMaster[i].header,
 					  &foreignMaster[i].announce,
 					    foreignMaster[i].localPreference,
@@ -730,6 +917,10 @@ bmc(ForeignMasterRecord *foreignMaster,
 
 	DBGV("Best record : %d \n",best);
 	ptpClock->foreign_record_best = best;
+	/** 
+	 * 进入State Decision Algorithm (SDA)状态决定算法，
+	 * 决定当前的时钟状态
+	 */	
 	return (bmcStateDecision(&foreignMaster[best].header,
 				 &foreignMaster[best].announce,
 				 foreignMaster[best].localPreference,

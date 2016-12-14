@@ -59,6 +59,10 @@
 
 extern RunTimeOpts rtOpts;
 
+/**
+ * 构造宏定义可以简化单字节的简单数据类型的转换(打包或解包)函数的定义，直接强制类型转换
+ * 宏定义中##的作用是先分隔，然后进行强制连接
+ */
 #define PACK_SIMPLE( type ) \
 void pack##type( void* from, void* to ) \
 { \
@@ -69,6 +73,11 @@ void unpack##type( void* from, void* to, PtpClock *ptpClock ) \
 	pack##type( from, to ); \
 }
 
+/**
+ * 构造宏定义可以简化多字节(2字节或4字节)的数据类型的转换(打包或解包)函数的定义，需要考虑字节序
+ * unpack的函数中传入了PtpClock变量，但实际上目前并未用到
+ * 宏定义中##的作用是先分隔，然后进行强制连接
+ */
 #define PACK_ENDIAN( type, size ) \
 void pack##type( void* from, void* to ) \
 { \
@@ -78,6 +87,14 @@ void unpack##type( void* from, void* to, PtpClock *ptpClock ) \
 { \
 	pack##type( from, to ); \
 }
+
+/**
+ * 构造宏定义可以简化半个字节(4比特)的数据类型的转换(打包或解包)函数的定义，pack和unpack的过程并不相同
+ * pack##type##Lower是将4比特的from放到to的低4比特中，unpack##type##Lower则取出from的低4比特
+ * pack##type##Upper是将4比特的from放到to的高4比特中，unpack##type##Upper则取出from的高4比特
+ * unpack的函数中传入了PtpClock变量，但实际上目前并未用到
+ * 宏定义中##的作用是先分隔，然后进行强制连接
+ */
 
 #define PACK_LOWER_AND_UPPER( type ) \
 void pack##type##Lower( void* from, void* to ) \
@@ -102,24 +119,39 @@ void unpack##type##Upper( void* from, void* to, PtpClock *ptpClock ) \
         *(type *)to = (*(char *)from >> 4) & 0x0F; \
 }
 
+/**
+ * 利用已定义的宏定义可以构造出半个字节(4比特)的数据类型的转换(打包或解包)函数
+ * packUInteger8( void* from, void* to )、unpackUInteger8( void* from, void* to )等
+ */
 PACK_SIMPLE( Boolean )
 PACK_SIMPLE( UInteger8 )
 PACK_SIMPLE( Octet )
 PACK_SIMPLE( Enumeration8 )
 PACK_SIMPLE( Integer8 )
 
+/**
+ * 利用已定义的宏定义可以构造出多字节(2字节或4字节)的数据类型的转换(打包或解包)函数
+ * packUInteger32( void* from, void* to )、unpackUInteger32( void* from, void* to )等
+ */
 PACK_ENDIAN( Enumeration16, 16 )
 PACK_ENDIAN( Integer16, 16 )
 PACK_ENDIAN( UInteger16, 16 )
 PACK_ENDIAN( Integer32, 32 )
 PACK_ENDIAN( UInteger32, 32 )
 
+/**
+ * 利用已定义的宏定义可以构造出多字节的数据类型的转换(打包或解包)函数
+ * packUInteger4Lower( void* from, void* to )、packUInteger4Upper( void* from, void* to )、
+ * unpackUInteger4Lower( void* from, void* to )、unpackUInteger4Upper( void* from, void* to )? */
 PACK_LOWER_AND_UPPER( Enumeration4 )
 PACK_LOWER_AND_UPPER( UInteger4 )
 PACK_LOWER_AND_UPPER( Nibble )
 
 /* The free function is intentionally empty. However, this simplifies
  * the procedure to deallocate complex data types
+ */
+/**
+ * 构造宏定义简化各数据类型的free函数定义，目前都仅是空函数
  */
 #define FREE( type ) \
 void free##type( void* x) \
@@ -139,6 +171,9 @@ FREE ( Enumeration4 )
 FREE ( UInteger4 )
 FREE ( Nibble )
 
+/**
+ * 6字节的数据类型的转换(打包或解包)函数
+ */
 void
 unpackUInteger48( void *buf, void *i, PtpClock *ptpClock)
 {
@@ -154,6 +189,9 @@ packUInteger48( void *i, void *buf)
 	packUInteger32(&((UInteger48*)i)->lsb, buf + 2);
 }
 
+/**
+ * 8字节的数据类型的转换(打包或解包)函数
+ */
 void
 unpackInteger64( void *buf, void *i, PtpClock *ptpClock)
 {
@@ -169,6 +207,9 @@ packInteger64( void* i, void *buf )
 }
 
 /* NOTE: the unpack functions for management messages can probably be refactored into a macro */
+/**
+ * unpackMM开头的为管理帧的解包函数，会在Protocol.c中的handleManagement函数中被调用
+ */
 void
 unpackMMSlaveOnly( Octet *buf, MsgManagement* m, PtpClock* ptpClock)
 {
@@ -188,6 +229,9 @@ unpackMMSlaveOnly( Octet *buf, MsgManagement* m, PtpClock* ptpClock)
 }
 
 /* NOTE: the pack functions for management messsages can probably be refactored into a macro */
+/**
+ * packMM开头的为管理帧的打包函数，会在本文件中被调用
+ */
 UInteger16
 packMMSlaveOnly( MsgManagement* m, Octet *buf)
 {
@@ -1480,6 +1524,9 @@ unpackMsgSignaling(Octet *buf, MsgSignaling *m, PtpClock *ptpClock)
 }
 
 /*Unpack Header from IN buffer to msgTmpHeader field */
+/**
+ * 解包PTP的头部信息
+ */
 void
 msgUnpackHeader(Octet * buf, MsgHeader * header)
 {
@@ -1508,6 +1555,9 @@ msgUnpackHeader(Octet * buf, MsgHeader * header)
 }
 
 /*Pack header message into OUT buffer of ptpClock*/
+/**
+ * 打包PTP的头部信息
+ */
 void
 msgPackHeader(Octet * buf, PtpClock * ptpClock)
 {
@@ -1519,6 +1569,9 @@ msgPackHeader(Octet * buf, PtpClock * ptpClock)
 	/* clear flag field - message packing functions should populate it */
 	memset((buf + 6), 0, 2);
 
+	/**
+	 * buf+8开始的8个字节为correctionField.msb(4字节)和correctionField.lsb(4字节)
+	 */
 	memset((buf + 8), 0, 8);
 	copyClockIdentity((buf + 20), ptpClock->portIdentity.clockIdentity);
 	*(UInteger16 *) (buf + 28) = flip16(ptpClock->portIdentity.portNumber);
@@ -1549,6 +1602,9 @@ msgPackSync(Octet * buf, UInteger16 sequenceId, Timestamp * originTimestamp, Ptp
 	 /* Table 24 - unless it's multicast, logMessageInterval remains    0x7F */
 	 if(rtOpts.transport == IEEE_802_3 || rtOpts.ipMode == IPMODE_MULTICAST)
 		*(Integer8 *) (buf + 33) = ptpClock->logSyncInterval;
+	/**
+	 * 将correctionField.msb(4字节)和correctionField.lsb(4字节)置为0
+	 */
 	memset((buf + 8), 0, 8);
 
 	/* Sync message */
@@ -1721,6 +1777,9 @@ msgPackPdelayReq(Octet * buf, Timestamp * originTimestamp, PtpClock * ptpClock)
 	/* Table 23 */
 	*(Integer8 *) (buf + 33) = 0x7F;
 	/* Table 24 */
+	/**
+	 * 将correctionField.msb(4字节)和correctionField.lsb(4字节)置为0
+	 */
 	memset((buf + 8), 0, 8);
 
 	/* Pdelay_req message */
@@ -1752,6 +1811,9 @@ msgPackDelayReq(Octet * buf, Timestamp * originTimestamp, PtpClock * ptpClock)
 	/* Table 23 */
 	*(Integer8 *) (buf + 33) = 0x7F;
 	/* Table 24 */
+	/**
+	 * 将correctionField.msb(4字节)和correctionField.lsb(4字节)置为0
+	 */
 	memset((buf + 8), 0, 8);
 
 	/* Pdelay_req message */
@@ -1776,6 +1838,9 @@ msgPackDelayResp(Octet * buf, MsgHeader * header, Timestamp * receiveTimestamp, 
 
 	/* -- PTP_UNICAST flag will be set in netsend* if needed */
 
+	/**
+	 * 将correctionField.msb(4字节)和correctionField.lsb(4字节)置为0
+	 */
 	memset((buf + 8), 0, 8);
 
 	/* Copy correctionField of PdelayReqMessage */
@@ -1816,6 +1881,9 @@ msgPackPdelayResp(Octet * buf, MsgHeader * header, Timestamp * requestReceiptTim
 	/* Table 19 */
 	*(UInteger16 *) (buf + 2) = flip16(PDELAY_RESP_LENGTH);
 	*(UInteger8 *) (buf + 4) = header->domainNumber;
+	/**
+	 * 将correctionField.msb(4字节)和correctionField.lsb(4字节)置为0
+	 */
 	memset((buf + 8), 0, 8);
 
 
@@ -2326,6 +2394,9 @@ msgUnpackSignaling(Octet *buf, MsgSignaling * signaling, MsgHeader * header, Ptp
  * Dump the most recent packet in the daemon
  * 
  * @param ptpClock The central clock structure
+ */
+/**
+ * 在开启Debug模式后打印数据包的内容
  */
 void msgDump(PtpClock *ptpClock)
 {

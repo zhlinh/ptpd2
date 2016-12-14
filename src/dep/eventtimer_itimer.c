@@ -246,6 +246,9 @@ startEventTimers(void)
 #endif /* __sun */
 
 	elapsed = 0;
+	/**
+	 * 将下一次启动时间和间隔都设置为US_TIMER_INTERVAL
+     */
 	itimer.it_value.tv_sec = itimer.it_interval.tv_sec = 0;
 	itimer.it_value.tv_usec = itimer.it_interval.tv_usec = 
 	    US_TIMER_INTERVAL;
@@ -258,9 +261,9 @@ startEventTimers(void)
 #else	
 	signal(SIGALRM, timerSignalHandler);
 #endif /* __sun */
-	/**
-	 * 设置定时器，间隔为US_TIMER_INTERVAL
-	 */
+    /**
+     * 设置定时器，下一次启动时间和间隔都为US_TIMER_INTERVAL
+     */
 	setitimer(ITIMER_REAL, &itimer, 0);
 }
 

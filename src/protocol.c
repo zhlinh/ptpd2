@@ -1,5 +1,5 @@
 /**
- * IEEE1588协议和状态机的实现
+ * IEEE 1588协议和状态机的实现
  */
 
 /*-
@@ -113,6 +113,10 @@ static Integer32 findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts 
 #ifndef PTPD_SLAVE_ONLY
 
 /* store transportAddress in an index table */
+/**
+ * 如果不是SLAVE_ONLY，则往哈希表index table中储存单播目的地址transportAddress，仅服务器端需要
+ * 单播的最大目的地址数UNICAST_MAX_DESTINATIONS为16，以timeStamp作为hash的输入
+ */
 static void
 indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAddress, SyncDestEntry *index)
 {
@@ -121,7 +125,7 @@ indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAdd
 
 #ifdef RUNTIME_DEBUG
 	struct in_addr tmpAddr;
-	tmpAddr.s_addr = transportAddress;
+	tmpAddr.s_addr = 	transportAddress;
 #endif /* RUNTIME_DEBUG */
 
     if(timeStamp == NULL || index == NULL) {
@@ -143,6 +147,11 @@ indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAdd
 #endif /* PTPD_SLAVE_ONLY */
 
 /* sync destination index lookup */
+/**
+ * 以timeStamp作为输入查询哈希表index table中的单播目的地址transportAddress
+ * 若transportAddress为0，则表明查询不到
+ * 若查询到了，则最后将该transportAddress设为0
+ */
 static Integer32
 lookupSyncIndex(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index)
 {
@@ -177,12 +186,18 @@ findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock
 
     for(i = 0; i < UNICAST_MAX_DESTINATIONS; i++) {
 
+	/**
+	 * 协商后形成的单播地址
+	 */
 	if(rtOpts->unicastNegotiation) {
 		if( (timeStamp->seconds == ptpClock->unicastGrants[i].lastSyncTimestamp.seconds) &&
 		    (timeStamp->nanoseconds == ptpClock->unicastGrants[i].lastSyncTimestamp.nanoseconds)) {
 			clearTime(&ptpClock->unicastGrants[i].lastSyncTimestamp);
 			return ptpClock->unicastGrants[i].transportAddress;
 		    }
+	/**
+	 * 配置的单播地址
+	 */
 	} else {
 		if( (timeStamp->seconds == ptpClock->unicastDestinations[i].lastSyncTimestamp.seconds) &&
 		    (timeStamp->nanoseconds == ptpClock->unicastDestinations[i].lastSyncTimestamp.nanoseconds)) {
@@ -207,13 +222,24 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
 	DBG("event POWERUP\n");
 
+	/**
+	 * 开启定时器
+	 * 所有的定时器定义在src/Ptp_timers.h
+	 * 初始化@timingDomain.updateInterval为1，即一个US_TIMER_INTERVAL(62500us)
+	 */
 	timerStart(&ptpClock->timers[TIMINGDOMAIN_UPDATE_TIMER],timingDomain.updateInterval);
 
+	/**
+	 * 首先进入PTP_INITIALIZING(PTP初始化)状态
+	 */
 	toState(PTP_INITIALIZING, rtOpts, ptpClock);
 	if(rtOpts->statusLog.logEnabled)
 		writeStatusFile(ptpClock, rtOpts, TRUE);
 
 	/* run the status file update every 1 .. 1.2 seconds */
+	/**
+	 * 开启写入status file和stat file的定时器
+	 */
 	timerStart(&ptpClock->timers[STATUSFILE_UPDATE_TIMER],rtOpts->statusFileUpdateInterval * (1.0 + 0.2 * getRand()));
 	timerStart(&ptpClock->timers[PERIODIC_INFO_TIMER],rtOpts->statsUpdateInterval);
 
@@ -233,12 +259,18 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 			     * that is keep processing signals. If init failed, wait for n seconds
 			     * until next retry, do not exit. Wait in chunks so SIGALRM can interrupt.
 			     */
+				/**
+				 * 如果初始化失败，则挂起1s后重试
+				 */
 			    if(ptpClock->initFailure) {
 				    usleep(10000);
 				    ptpClock->initFailureTimeout--;
 			    }
 
 			    if(!ptpClock->initFailure || ptpClock->initFailureTimeout <= 0) {
+				/**
+				 * 初始化网络及其他，并转向PTP_LISTENING状态
+				 */
 				if(!doInit(rtOpts, ptpClock)) {
 					ERROR("PTPd init failed - will retry in %d seconds\n", DEFAULT_FAILURE_WAITTIME);
 					writeStatusFile(ptpClock, rtOpts, TRUE);
@@ -289,6 +321,10 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 
 /* perform actions required when leaving 'port_state' and entering 'state' */
+/**
+ * 转变state时所需要完成的工作，如停止之前的定时器，启动新的定时器等
+ * 然后将@state赋值给@ptpClock->port_state
+ */
 void 
 toState(UInteger8 state, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
@@ -647,6 +683,9 @@ doInit(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		MANUFACTURER_ID_OUI1,
 		MANUFACTURER_ID_OUI2);
 	/* initialize networking */
+	/**
+	 * 关闭之前的UDP连接
+	 */
 	netShutdown(&ptpClock->netPath);
 
 	if(rtOpts->backupIfaceEnabled &&
@@ -683,11 +722,11 @@ doInit(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	return TRUE;
 }
 
+
+/* handle actions and events for 'port_state' */
 /**
  * doState()完成协议每个阶段的处理
  */
-
-/* handle actions and events for 'port_state' */
 static void 
 doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
@@ -710,12 +749,23 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		 * changed an attribute in ptpClock,
 		 * then run the BMC algorithm
 		 */ 
+		/**
+		 * 如果处于PTP_LISTENING、PTP_PASSIVE、PTP_SLAVE和PTP_MASTER的任一状态下，
+		 * 收到一个有效的Announce Msg，且可以使用(即@ptpClock->record_update为真)，则运行BMC最佳主时钟函数
+		 */
 		if(ptpClock->record_update)
 		{
 			DBG2("event STATE_DECISION_EVENT\n");
 			ptpClock->record_update = FALSE;
+			/**
+			 * 最佳主时钟算法(Best Master Clock Algorithm, BMC)由状态决定算法(State Decision Algorithm, SDA)
+			 * 和数据集比较算法(Data set Comparison Algorithm, DCA)两部分组成
+			 */
 			state = bmc(ptpClock->foreign, rtOpts, ptpClock);
 			if(state != ptpClock->portState)
+				/**
+				 * 转入最佳主时钟算法决定的状态
+				 */
 				toState(state, rtOpts, ptpClock);
 		}
 		break;
@@ -729,6 +779,9 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	{
 	case PTP_FAULTY:
 		/* imaginary troubleshooting */
+		/**
+		 * 如果处于PTP_FAULTY则进入PTP_INITIALIZING状态重新初始化
+		 */
 		DBG("event FAULT_CLEARED\n");
 		toState(PTP_INITIALIZING, rtOpts, ptpClock);
 		return;
@@ -738,6 +791,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	case PTP_SLAVE:
 	// passive mode behaves like the SLAVE state, in order to wait for the announce timeout of the current active master
 	case PTP_PASSIVE:
+		/**
+		 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+		 * 一开始先阻塞接收数据包
+		 */
 		handle(rtOpts, ptpClock);
 		
 		/*
@@ -745,17 +802,33 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		 *   - No Announce message was received
 		 *   - Time to send new delayReq  (miss of delayResp is not monitored explicitelly)
 		 */
+		/**
+		 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+		 * 如果接收Announce Msg超时
+		 */
 		if (timerExpired(&ptpClock->timers[ANNOUNCE_RECEIPT_TIMER]))
 		{
 			DBG("event ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES\n");
 
+			/**
+			 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+			 * 如果本地时钟不是slaveOnly模式
+			 */
 			if(!ptpClock->slaveOnly && 
 			   ptpClock->clockQuality.clockClass != SLAVE_ONLY_CLOCK_CLASS) {
+				/**
+				 * 将外部主时钟的个数设为0，
+				 * 并进入PTP_MASTER状态
+				 */
 				ptpClock->number_foreign_records = 0;
 				ptpClock->foreign_record_i = 0;
 				m1(rtOpts,ptpClock);
 				toState(PTP_MASTER, rtOpts, ptpClock);
 
+			/**
+			 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+			 * 如果本地时钟为slaveOnly模式， 且当前不是PTP_LISTENING状态
+			 */
 			} else if(ptpClock->portState != PTP_LISTENING) {
 #ifdef PTPD_STATISTICS
 				/* stop statistics updates */
@@ -769,6 +842,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 				* otherwise, timer will cycle and we will reset.
 				* Also don't clear the FMR just yet.
 				*/
+				/**
+				 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+				 * 如果本地时钟不是PTP_LISTENING状态，
+				 * 先不重新选择master，只更新GM信息，
+				 * 然后进入PTP_INITIALIZING(如果存在备用网络接口)或者PTP_LISTENING状态
+				 */
 				if (ptpClock->grandmasterClockQuality.clockClass != 255 &&
 				    ptpClock->grandmasterPriority1 != 255 &&
 				    ptpClock->grandmasterPriority2 != 255) {
@@ -782,8 +861,17 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 					ptpClock->counters.announceTimeouts++;
 				}
 
+				/**
+				 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+				 * 如果本地时钟不是PTP_LISTENING状态，
+				 * 且本地时钟不是IPMODE_UNICAST模式，配置中允许更新IGMP，没有使用IEEE_802_3协议，
+				 * 则更新IGMP(Internet Group Management Protocol)
+				 */
 				if (rtOpts->ipMode != IPMODE_UNICAST && rtOpts->do_IGMP_refresh && rtOpts->transport != IEEE_802_3) {
 				/* if multicast refresh failed, restart network - helps recover after driver reloads and such */
+							/**
+							 * 如果更新IGMP失败，则进入PTP_FAULTY状态
+							 */
                 		    if(!netRefreshIGMP(&ptpClock->netPath, rtOpts, ptpClock)) {
                         		WARNING("Error while refreshing multicast - restarting transports\n");
                         		toState(PTP_FAULTY, rtOpts, ptpClock);
@@ -800,26 +888,45 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 					ptpClock->foreign_record_i = 0;
 
 					/* if flipping between primary and backup interface, a full nework re-init is required */
+					/**
+					 * PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+					 * 如果启用了备用网络接口，则使用该网络接口重启动，进入PTP_INITIALIZING状态
+					 */
 					if(rtOpts->backupIfaceEnabled) {
 						ptpClock->runningBackupInterface = !ptpClock->runningBackupInterface;
 						toState(PTP_INITIALIZING, rtOpts, ptpClock);
 						NOTICE("Now switching to %s interface\n", ptpClock->runningBackupInterface ? 
 							    "backup":"primary");
+						/**
+						 * PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+						 * 如果没有启用备用网络接口，则进入PTP_LISTENING状态
+						 */
 					    } else {
 
 						toState(PTP_LISTENING, rtOpts, ptpClock);
 					    }
 
 					}
+			/**
+			 * 如果本地时钟为slaveOnly模式， 且当前为PTP_LISTENING状态
+			 */
 			} else {
 
 				    /* if flipping between primary and backup interface, a full nework re-init is required */
+					/**
+					 * PTP_LISTENING状态：
+					 * 如果启用了备用网络接口，则该网络接口重启动，进入PTP_INITIALIZING状态
+					 */
 				    if(rtOpts->backupIfaceEnabled) {
 					ptpClock->runningBackupInterface = !ptpClock->runningBackupInterface;
 					toState(PTP_INITIALIZING, rtOpts, ptpClock);
 					NOTICE("Now switching to %s interface\n", ptpClock->runningBackupInterface ? 
 						"backup":"primary");
 
+					/**
+					 * PTP_LISTENING状态：
+					 * 如果没有启用备用网络接口，则进入PTP_LISTENING状态
+					 */
 				    } else {
 				/*
 				 *  Force a reset when getting a timeout in state listening, that will lead to an IGMP reset
@@ -833,10 +940,21 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
                 }
 
 		/* Reset the slave if clock update timeout configured */
+		/**
+		 * 如果是PTP_SLAVE状态，且CLOCK_UPDATE_TIMER定时器超时
+		 */
 		if ( ptpClock->portState == PTP_SLAVE && (rtOpts->clockUpdateTimeout > 0) &&
 		    timerExpired(&ptpClock->timers[CLOCK_UPDATE_TIMER])) {
+			/**
+			 * 如果本时钟是@panicMode应急模式或者@noAdjust不调整模式，
+			 * 则重新启动CLOCK_UPDATE_TIMER定时器
+			 */
 			if(ptpClock->panicMode || rtOpts->noAdjust) {
 				timerStart(&ptpClock->timers[CLOCK_UPDATE_TIMER], rtOpts->clockUpdateTimeout);
+			/**
+			 * 正常模式下的PTP_SLAVE状态下，
+			 * 则进入PTP_LISTENING状态
+			 */
 			} else {
 			    WARNING("No offset updates in %d seconds - resetting slave\n",
 				rtOpts->clockUpdateTimeout);
@@ -844,11 +962,23 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 			}
 		}
 
+		/**
+		 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+		 * 如果OPERATOR_MESSAGES_TIMER定时器超时，
+		 * 则重置本地时钟的相关警告域
+		 */
 		if (timerExpired(&ptpClock->timers[OPERATOR_MESSAGES_TIMER])) {
 			resetWarnings(rtOpts, ptpClock);
 		}
 
+		/**
+		 * 如果本时钟为PTP_SLAVE状态，且未被校正
+		 */
 		if(ptpClock->portState==PTP_SLAVE && rtOpts->calibrationDelay && !ptpClock->isCalibrated) {
+			/**
+			 * 如果CALIBRATION_DELAY_TIMER定时器超时，
+			 * 则将@isCalibrated的值置为TRUE
+			 */
 			if(timerExpired(&ptpClock->timers[CALIBRATION_DELAY_TIMER])) {
 				ptpClock->isCalibrated = TRUE;
 				if(ptpClock->clockControl.granted) {
@@ -856,25 +986,51 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 				} else {
 					NOTICE("Offset computation now calibrated\n");
 				}
+			/**
+			 * 如果CALIBRATION_DELAY_TIMER定时器没有在运行，
+			 * 则将重新启动CALIBRATION_DELAY_TIMER定时器
+			 */
 			} else if(!timerRunning(&ptpClock->timers[CALIBRATION_DELAY_TIMER])) {
 			    timerStart(&ptpClock->timers[CALIBRATION_DELAY_TIMER], rtOpts->calibrationDelay);
 			}
 		}
 
+		/**
+		 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+		 * 如果采用E2E机制
+		 */
 		if (ptpClock->delayMechanism == E2E) {
+			/**
+			 * 如果DELAYREQ_INTERVAL_TIMER定时器超时
+			 */
 			if(timerExpired(&ptpClock->timers[DELAYREQ_INTERVAL_TIMER])) {
 				DBG2("event DELAYREQ_INTERVAL_TIMEOUT_EXPIRES\n");
 				/* if unicast negotiation is enabled, only request if granted */
+				/**
+				 * 如果多播或DELAY_RESP已被认证的单播
+				 * 则打包并发送Delay_Req消息
+				 */
 				if(!rtOpts->unicastNegotiation || 
 					(ptpClock->parentGrants && 
 					    ptpClock->parentGrants->grantData[DELAY_RESP].granted)) {
 						issueDelayReq(rtOpts,ptpClock);
 				}
 			}
+		/**
+		 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+		 * 如果采用P2P机制
+		 */
 		} else if (ptpClock->delayMechanism == P2P) {
+			/**
+			 * 如果PDELAYREQ_INTERVAL_TIMER定时器超时
+			 */
 			if (timerExpired(&ptpClock->timers[PDELAYREQ_INTERVAL_TIMER])) {
 				DBGV("event PDELAYREQ_INTERVAL_TIMEOUT_EXPIRES\n");
 				/* if unicast negotiation is enabled, only request if granted */
+				/**
+				 * 如果多播或PDELAY_RESP已被认证的单播，
+				 * 则打包并发送PDelay_Req消息
+				 */
 				if(!rtOpts->unicastNegotiation || 
 					( ptpClock->peerGrants.grantData[PDELAY_RESP].granted)) {
 					    issuePdelayReq(rtOpts,ptpClock);
@@ -888,6 +1044,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
                         DBGV("seconds to midnight: %.3f\n",secondsToMidnight());
 
                 /* leap second period is over */
+				/**
+				 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+				 * 如果LEAP_SECOND_PAUSE_TIMER定时器超时，且@leapSecondInProgress为真，
+				 * 则设置leapSecondPending为FALSE，并停止LEAP_SECOND_PAUSE_TIMER定时器
+				 * LEAP_SECOND_PAUSE_TIMER定时器将会在handleAnnounce()中被再次启用
+				 */
                 if(timerExpired(&ptpClock->timers[LEAP_SECOND_PAUSE_TIMER]) &&
                     ptpClock->leapSecondInProgress) {
                             /* 
@@ -899,6 +1061,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
                             timerStop(&ptpClock->timers[LEAP_SECOND_PAUSE_TIMER]);
                     } 
 		/* check if leap second is near and if we should pause updates */
+		/**
+		 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+		 * 如果LEAP_SECOND_PAUSE_TIMER定时器超时，@leapSecondInProgress为真，
+		 * 且leap second(闰秒)很接近了，即secondsToMidnight()的值小于getPauseAfterMidnight()的值，
+		 * 则将leapSecondInProgress设为TRUE，作用为停止LEAP_SECOND_PAUSE_TIMER定时器
+		 */
 		if( ptpClock->leapSecondPending &&
 		    !ptpClock->leapSecondInProgress &&
 		    (secondsToMidnight() <= 
@@ -912,6 +1080,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 			     * midnight, plus an extra second if inserting
 			     * a leap second
 			     */
+				/**
+				 * case PTP_LISTENING、PTP_UNCALIBRATED、PTP_SLAVE或PTP_PASSIVE状态：
+				 * 将午夜Midnight后的第一个Pause加上闰秒作为起点，开启LEAP_SECOND_PAUSE_TIMER定时器
+				 */
 			    timerStart(&ptpClock->timers[LEAP_SECOND_PAUSE_TIMER],
 				       ((secondsToMidnight() + 
 				       (int)ptpClock->timePropertiesDS.leap61) + 
@@ -928,6 +1100,9 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 #endif /* PTPD_STATISTICS */
 
 		break;
+/**
+ * 如果没有定义PTPD_SLAVE_ONLY
+ */
 #ifndef PTPD_SLAVE_ONLY
 	case PTP_MASTER:
 		/*
@@ -938,10 +1113,21 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		 *     in two-step mode: improves interoperability
 		 *      (DelayResp has no timer - as these are sent and retransmitted by the slaves)
 		 */
-
+		/**
+		 * master所需要处理的定时器:
+		 *   - 定时发送新的Announce消息
+		 *   - 定时发送新的PathDelay消息
+		 *   - 定时发送新的Sync消息 (排在最后一位 - 这样两步模式中的follow_up消息就可以总紧随sync消息
+		 *     (DelayResp没有定时器，因其只由slave发送)
+		 */
+		
 		/* master leap second triggers */
 
 		/* if we have an offset from some source, we assume it's valid */
+		/**
+		 * case PTP_MASTER状态：
+		 * 以@clockStatus.utcOffset的值作为本master时钟中timePropertiesDS的相应值，默认其为正确的
+		 */
 		if(ptpClock->clockStatus.utcOffset != 0) {
 			ptpClock->timePropertiesDS.currentUtcOffset = ptpClock->clockStatus.utcOffset;
 			ptpClock->timePropertiesDS.currentUtcOffsetValid = TRUE;
@@ -949,6 +1135,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		}
 
 		/* update the tpDS with clockStatus leap flags - only if running PTP timescale */
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果@ptpTimescale为真，且到了需要处理闰秒的时间，即secondsToMidtnight() < rtOpts->leapSecondNoticePeriod，
+		 * 则以@clockStatus.leapDelete和leapInsert的值作为本master时钟的timePropertiesDS中leap59和leap61的值，
+		 * 否则将leap59和leap61都置为FALSE
+		 */
 		if(ptpClock->timePropertiesDS.ptpTimescale &&
 		    (secondsToMidnight() < rtOpts->leapSecondNoticePeriod)) {
 			ptpClock->timePropertiesDS.leap59 = ptpClock->clockStatus.leapDelete;
@@ -958,6 +1150,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		    ptpClock->timePropertiesDS.leap61 = FALSE;
 		}
 
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果存在闰秒，则将@leapSecondPending置为TRUE，标记以待处理
+		 */
 		if(ptpClock->timePropertiesDS.leap59 ||
 		    ptpClock->timePropertiesDS.leap61 ) {
 		    if(!ptpClock->leapSecondInProgress) {
@@ -967,6 +1163,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		}
 
 		/* check if leap second is near and if we should pause updates */
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果LEAP_SECOND_PAUSE_TIMER定时器超时，@leapSecondInProgress为真，
+		 * 且leap second(闰秒)很接近了，即secondsToMidnight()的值小于getPauseAfterMidnight()的值，
+		 * 则将leapSecondInProgress设为TRUE，作用为停止LEAP_SECOND_PAUSE_TIMER定时器
+		 */
 		if( ptpClock->leapSecondPending &&
 		    !ptpClock->leapSecondInProgress &&
 		    (secondsToMidnight() <= 
@@ -980,6 +1182,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 			     * midnight, plus an extra second if inserting
 			     * a leap second
 			     */
+				/**
+				 * case PTP_MASTER状态：
+				 * 将午夜Midnight后的第一个Pause加上闰秒作为起点，开启LEAP_SECOND_PAUSE_TIMER定时器
+				 */
 			    timerStart(&ptpClock->timers[LEAP_SECOND_PAUSE_TIMER],
 				       ((secondsToMidnight() + 
 				       (int)ptpClock->timePropertiesDS.leap61) + 
@@ -988,6 +1194,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		}
 
                 /* leap second period is over */
+				/**
+				 * case PTP_MASTER状态：
+				 * 如果LEAP_SECOND_PAUSE_TIMER定时器超时，且@leapSecondInProgress为真，
+				 * 则设置leapSecondPending为FALSE，并停止LEAP_SECOND_PAUSE_TIMER定时器
+				 * LEAP_SECOND_PAUSE_TIMER定时器将会在handleAnnounce()中被再次启用
+				 */
                 if(timerExpired(&ptpClock->timers[LEAP_SECOND_PAUSE_TIMER]) &&
                     ptpClock->leapSecondInProgress) {
                             ptpClock->leapSecondPending = FALSE;
@@ -997,10 +1209,17 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 				    "event message processing\n");
                 } 
 
-
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果ANNOUNCE_INTERVAL_TIMER定时器超时，
+		 * 则打包并发送Announce消息
+		 */
 		if (timerExpired(&ptpClock->timers[ANNOUNCE_INTERVAL_TIMER])) {
 			DBGV("event ANNOUNCE_INTERVAL_TIMEOUT_EXPIRES\n");
 			/* restart the timer with current interval in case if it changed */
+			/**
+			 * 如果2^logAnnounceInterval的值改变了，则用该新的值作为下一次启动时间和间隔重新启动ANNOUNCE_INTERVAL_TIMER定时器
+			 */
 			if(pow(2,ptpClock->logAnnounceInterval) != ptpClock->timers[ANNOUNCE_INTERVAL_TIMER].interval) {
 				timerStart(&ptpClock->timers[ANNOUNCE_INTERVAL_TIMER], 
 					pow(2,ptpClock->logAnnounceInterval));
@@ -1009,10 +1228,22 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 		}
 
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果为P2P机制
+		 */
 		if (ptpClock->delayMechanism == P2P) {
+			/**
+			 * case PTP_MASTER状态：
+			 * 如果PDELAYREQ_INTERVAL_TIMER定时器超时，
+			 */
 			if (timerExpired(&ptpClock->timers[PDELAYREQ_INTERVAL_TIMER])) {
 				DBGV("event PDELAYREQ_INTERVAL_TIMEOUT_EXPIRES\n");
 				/* if unicast negotiation is enabled, only request if granted */
+				/**
+				 * 如果多播或PDELAY_RESP已被认证的单播，
+				 * 则打包并发送PDelay_Req消息
+				 */
 				if(!rtOpts->unicastNegotiation || 
 					( ptpClock->peerGrants.grantData[PDELAY_RESP].granted)) {
 					    issuePdelayReq(rtOpts,ptpClock);
@@ -1020,6 +1251,12 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 			}
 		}
 
+		/**
+		 * case PTP_MASTER状态：
+		 * 配置中允许更新IGMP，本地时钟不是IPMODE_UNICAST模式，@masterRefreshInterval大于9，
+		 * 且MASTER_NETREFRESH_TIMER定时器超时，
+		 * 则更新IGMP(Internet Group Management Protocol)
+		 */
 		if(rtOpts->do_IGMP_refresh &&
 		    rtOpts->transport == UDP_IPV4 &&
 		    rtOpts->ipMode != IPMODE_UNICAST &&
@@ -1028,6 +1265,9 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 				DBGV("Master state periodic IGMP refresh - next in %d seconds...\n",
 				rtOpts->masterRefreshInterval);
 				/* if multicast refresh failed, restart network - helps recover after driver reloads and such */
+							/**
+							 * 如果更新IGMP失败，则进入PTP_FAULTY状态
+							 */
                 		    if(!netRefreshIGMP(&ptpClock->netPath, rtOpts, ptpClock)) {
                         		WARNING("Error while refreshing multicast - restarting transports\n");
                         		toState(PTP_FAULTY, rtOpts, ptpClock);
@@ -1035,9 +1275,17 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
                 		    }
 		}
 
+		/**
+		 * case PTP_MASTER状态：
+		 * SYNC_INTERVAL_TIMER定时器超时，
+		 * 则打包并发送Sync消息
+		 */
 		if (timerExpired(&ptpClock->timers[SYNC_INTERVAL_TIMER])) {
 			DBGV("event SYNC_INTERVAL_TIMEOUT_EXPIRES\n");
 			/* re-arm timer if changed */
+			/**
+			 * 如果2^logSyncInterval的值改变了，则用该新的值作为下一次启动时间和间隔重新启动SYNC_INTERVAL_TIMER定时器
+			 */
 			if(pow(2,ptpClock->logSyncInterval) != ptpClock->timers[SYNC_INTERVAL_TIMER].interval) {
 				timerStart(&ptpClock->timers[SYNC_INTERVAL_TIMER], 
 					pow(2,ptpClock->logSyncInterval));
@@ -1045,6 +1293,11 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 			issueSync(rtOpts, ptpClock);
 		}
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果slave的个数和单播目的节点的个数超过最大数目限制，
+		 * 则将@warnedUnicastCapacity设置为真
+		 */
 		if(!ptpClock->warnedUnicastCapacity) {
 		    if(ptpClock->slaveCount >= UNICAST_MAX_DESTINATIONS || 
 			ptpClock->unicastDestinationCount >= UNICAST_MAX_DESTINATIONS) {
@@ -1055,13 +1308,26 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		    }
 		}
 
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果OPERATOR_MESSAGES_TIMER定时器超时，
+		 * 则重置本地时钟的相关警告域
+		 */
 		if (timerExpired(&ptpClock->timers[OPERATOR_MESSAGES_TIMER])) {
 			resetWarnings(rtOpts, ptpClock);
 		}
 
 		// TODO: why is handle() below expiretimer, while in slave is the opposite
+		/**
+		 * case PTP_MASTER状态：
+		 * 当处理完所有定时器超时后，才阻塞接收数据包
+		 */
 		handle(rtOpts, ptpClock);
 
+		/**
+		 * case PTP_MASTER状态：
+		 * 如果本时钟只能为slave，则进入PTP_LISTENING状态
+		 */
 		if (ptpClock->slaveOnly || ptpClock->clockQuality.clockClass == SLAVE_ONLY_CLOCK_CLASS)
 			toState(PTP_LISTENING, rtOpts, ptpClock);
 
@@ -1069,6 +1335,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 #endif /* PTPD_SLAVE_ONLY */
 
 	case PTP_DISABLED:
+		/**
+		 * case PTP_DISABLED状态：
+		 * 阻塞接收数据包
+		 */
 		handle(rtOpts, ptpClock);
 		break;
 		
@@ -1077,16 +1347,32 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		break;
 	}
 
+	/**
+	 * 对于所有状态：
+	 * 如果PERIODIC_INFO_TIMER定时器超时，
+	 * 则周期性打印INFO信息
+	 */
 	if(rtOpts->periodicUpdates && timerExpired(&ptpClock->timers[PERIODIC_INFO_TIMER])) {
 		periodicUpdate(rtOpts, ptpClock);
 	}
 
+		/**
+		 * 对于所有状态：
+		 * 如果STATUSFILE_UPDATE_TIMER定时器超时，
+		 * 则周期性将状态信息写入Status文件
+		 */
         if(rtOpts->statusLog.logEnabled && timerExpired(&ptpClock->timers[STATUSFILE_UPDATE_TIMER])) {
                 writeStatusFile(ptpClock,rtOpts,TRUE);
 		/* ensures that the current updare interval is used */
 		timerStart(&ptpClock->timers[STATUSFILE_UPDATE_TIMER],rtOpts->statusFileUpdateInterval);
         }
 
+	/**
+	 * 对于所有状态：
+	 * 如果配置中允许Panic模式，PANIC_MODE_TIMER定时器超时，
+	 * 且Panic模式的剩余时间小于等于0，
+	 * 则关闭Panic模式
+	 */
 	if(rtOpts->enablePanicMode && timerExpired(&ptpClock->timers[PANIC_MODE_TIMER])) {
 
 		DBG("Panic check\n");
@@ -1171,7 +1457,7 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
 	ptpClock->counters.messageFormatErrors++;
 	return;
     }
-    /*
+    /**
      * 处理PTP报文的报头信息
      */    
     msgUnpackHeader(ptpClock->msgIbuf, &ptpClock->msgTmpHeader);
@@ -1287,7 +1573,7 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
      *
      *  (SYNC / DELAY_REQ / PDELAY_REQ / PDELAY_RESP)
      */
-    /*
+    /**
      * 然后根据PTP报头的messageType分类处理报文
      */  
     switch(ptpClock->msgTmpHeader.messageType)
@@ -1345,11 +1631,10 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
 
 }
 
+/* check and handle received messages */
 /**
  * 监听端口和接收数据包
  */
-
-/* check and handle received messages */
 void
 handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
@@ -1361,13 +1646,20 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
     FD_ZERO(&readfds);
     if (!ptpClock->message_activity) {
-        /**
-         * 阻塞式接受数据包，包括两个socket: event和general
-         */  
+	/**
+	 * 多路复用接受数据包，
+	 * 超时时间设置为NULL，即select置于阻塞状态，一定等到监视文件描述符集合中某个文件描述符发生变化为止
+	 * @ptpClock->netPath包括四种Socket: pcapEventSock、pcapGeneralSock、eventSock和generalSock
+	 * 但只会同时多路复用两种pcapEventSock和pcapGeneralSock 或 eventSock和generalSock
+	 * 返回可读的Socket
+	 */  
 	ret = netSelect(NULL, &ptpClock->netPath, &readfds);
 	if (ret < 0) {
 	    PERROR("failed to poll sockets");
 	    ptpClock->counters.messageRecvErrors++;
+		/**
+		 * 如果轮询sockets失败，则进入PTP_FAULTY状态
+		 */  
 	    toState(PTP_FAULTY, rtOpts, ptpClock);
 	    return;
 	} else if (!ret) {
@@ -1381,8 +1673,15 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 #ifdef PTPD_PCAP
     if (rtOpts->pcap == TRUE) {
+	/**
+	 * 如果采用的是PCAP模式
+	 */ 
 	if (ptpClock->netPath.pcapEventSock >=0 && FD_ISSET(ptpClock->netPath.pcapEventSock, &readfds)) {
-	    length = netRecvEvent(ptpClock->msgIbuf, &timeStamp, 
+		/**
+		 * netSelect()返回后，用netRecvEvent来接收Event Msg
+		 * 收到的数据保存在@ptpClock->msgIbuf中
+		 */
+		length = netRecvEvent(ptpClock->msgIbuf, &timeStamp, 
 		          &ptpClock->netPath,0);
 	    if (length == 0){ /* timeout, return for now */
 		return;
@@ -1391,6 +1690,9 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 	    if (length < 0) {
 		PERROR("failed to receive event on pcap");
+		/**
+		 * 如果PCAP模式下无法接收Event消息，则进入PTP_FAULTY状态
+		 */  
 		toState(PTP_FAULTY, rtOpts, ptpClock);
 		ptpClock->counters.messageRecvErrors++;
 
@@ -1399,7 +1701,9 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	    if(ptpClock->leapSecondInProgress) {
 		DBG("Leap second in progress - will not process event message\n");
 	    } else {
-
+		/**
+		 * 处理接收到的PTP报文
+		 */  
 		processMessage(rtOpts, ptpClock, &timeStamp, length);
 	    }
 	}
@@ -1417,16 +1721,21 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	}
     } else {
 #endif
+	/**
+	 * 如果没有采用PCAP模式
+	 */ 
 	if (FD_ISSET(ptpClock->netPath.eventSock, &readfds)) {
-            /**
-             * netSelect()返回后，用netRecvEvent来接收1588数据包
-             * 接收event和general，两种数据包不可能同时到达
-             * 所以收到的数据保存在ptpClock结构体的msgIbuf中
-             */
+		/**
+		 * netSelect()返回后，用netRecvEvent来接收Event Msg
+		 * 收到的数据保存在@ptpClock->msgIbuf中
+		 */
 	    length = netRecvEvent(ptpClock->msgIbuf, &timeStamp, 
 		          &ptpClock->netPath, 0);
 	    if (length < 0) {
 		PERROR("failed to receive on the event socket");
+		/**
+		 * 如果无法接收Event消息，则进入PTP_FAULTY状态
+		 */  
 		toState(PTP_FAULTY, rtOpts, ptpClock);
 		ptpClock->counters.messageRecvErrors++;
 		return;
@@ -1439,11 +1748,10 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	}
 
 	if (FD_ISSET(ptpClock->netPath.generalSock, &readfds)) {
-            /**
-             * netSelect()返回后，用netRecvGeneral来接收1588数据包
-             * 接收event和general，两种数据包不可能同时到达
-             * 所以收到的数据保存在ptpClock结构体的msgIbuf中
-             */
+        /**
+         * netSelect()返回后，用netRecvGeneral来接收General Msg
+         * 收到的数据保存在@ptpClock->msgIbuf中
+         */
 	    length = netRecvGeneral(ptpClock->msgIbuf, &ptpClock->netPath);
 	    if (length < 0) {
 		PERROR("failed to receive on the general socket");
@@ -1451,9 +1759,9 @@ handle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		ptpClock->counters.messageRecvErrors++;
 		return;
 	    }
-            /*
-             * 处理接收到的PTP报文，至此handle()处理结束
-             */  
+        /**
+         * 处理接收到的PTP报文
+         */  
 	    processMessage(rtOpts, ptpClock, &timeStamp, length);
 	}
 #ifdef PTPD_PCAP
@@ -3276,9 +3584,9 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	 * call GTOD. This time is later replaced in handleDelayReq,
 	 * to get the actual send timestamp from the OS
 	 */
-        /*
-         * 获取当前系统时间
-         */
+	/*
+	 * 获取当前系统时间
+	 */
 	getTime(&internalTime);
 	if (respectUtcOffset(rtOpts, ptpClock) == TRUE) {
 		internalTime.seconds += ptpClock->timePropertiesDS.currentUtcOffset;
@@ -3286,9 +3594,9 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	fromInternalTime(&internalTime,&originTimestamp);
 
 	// uses current sentDelayReqSequenceId
-        /*
-         * 将当前系统时间pack进报文中
-         */
+	/*
+	 * 将当前系统时间打包进报文中
+	 */
 	msgPackDelayReq(ptpClock->msgObuf,&originTimestamp,ptpClock);
 
 	Integer32 dst = 0;
@@ -3297,9 +3605,9 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
         if (rtOpts->ipMode == IPMODE_HYBRID || rtOpts->ipMode == IPMODE_UNICAST) {
     		dst = ptpClock->masterAddr;
         }
-        /*
-         * 然后调用netSendEvent发送
-         */
+	/*
+	 * 然后调用netSendEvent发送
+	 */
 	if (!netSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
 			  &ptpClock->netPath, rtOpts, dst, &internalTime)) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);

@@ -730,13 +730,22 @@ ptpdStartup(int argc, char **argv, Integer16 * ret, RunTimeOpts * rtOpts)
 	 * by setting rtOpts fields, will be considered the defaults
 	 * for config file and section:key long options.
 	 */
+	/**
+	 * 加载默认配置到@rtOpts的相应域中
+	 */
 	loadDefaultSettings(rtOpts);
 	/* initialise the config dictionary */
 	rtOpts->candidateConfig = dictionary_new(0);
 	rtOpts->cliConfig = dictionary_new(0);
 	/* parse all long section:key options and clean up argv for getopt */
+	/**
+	 * 加载命令行的长配置(字符数大于3)到字典@rtOpts->cliConfig中
+	 */
 	loadCommandLineKeys(rtOpts->cliConfig,argc,argv);
 	/* parse the normal short and long option, exit on error */
+	/**
+	 * 加载命令行的所有配置到字典@rtOpts->cliConfig
+	 */
 	if (!loadCommandLineOptions(rtOpts, rtOpts->cliConfig, argc, argv, ret)) {
 	    goto fail;
 	}
@@ -760,7 +769,14 @@ ptpdStartup(int argc, char **argv, Integer16 * ret, RunTimeOpts * rtOpts)
 	if(strlen(rtOpts->configFile) > 0) {
 		/* config file settings overwrite all others, except for empty strings */
 		INFO("Loading configuration file: %s\n",rtOpts->configFile);
+		/**
+		 * 加载配置文件(已在命令行中用-c来定义路径)的所有配置到字典@rtOpts->candidateConfig中
+		 */
 		if(loadConfigFile(&rtOpts->candidateConfig, rtOpts)) {
+			/**
+		 	 * 将命令行配置rtOpts->cliConfig加载到候选配置@rtOpts->candidateConfig中
+		 	 * 由此可知，最终配置会被命令行的配置所覆盖
+			 */
 			dictionary_merge(rtOpts->cliConfig, rtOpts->candidateConfig, 1, "from command line");
 		} else {
 		    *ret = 1;
@@ -775,6 +791,11 @@ ptpdStartup(int argc, char **argv, Integer16 * ret, RunTimeOpts * rtOpts)
 	 * A dictionary is returned with only the known options, explicitly set to defaults
 	 * if not present. NULL is returned on any config error - parameters missing, out of range,
 	 * etc. The getopt loop in loadCommandLineOptions() only sets keys verified here.
+	 */
+	/**
+	 * 加载字典@rtOpts->candidateConfig到相应的@rtOpts的相应域中
+	 * @rtOpts的域已由loadDefaultSettings函数加载了默认配置
+	 * 如果配置错误，parseConfig函数将会返回NULL
 	 */
 	if( ( rtOpts->currentConfig = parseConfig(rtOpts->candidateConfig,rtOpts)) == NULL ) {
 	    *ret = 1;

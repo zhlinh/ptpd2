@@ -89,18 +89,27 @@ main(int argc, char **argv)
 
 	startupInProgress = TRUE;
 
+	/**
+	 * 将所选择的时间服务器及其他服务器信息存储到@timingDomain
+	 */
 	memset(&timingDomain, 0, sizeof(timingDomain));
 	timingDomainSetup(&timingDomain);
 
 	timingDomain.electionLeft = 10;
 
 	/* Initialize run time options with command line arguments */
+	/**
+	 * 初始化配置，存储在结构体@rtOpts中
+	 */
 	if (!(ptpClock = ptpdStartup(argc, argv, &ret, &rtOpts))) {
 		if (ret != 0 && !rtOpts.checkConfigOnly)
 			ERROR(USER_DESCRIPTION" startup failed\n");
 		return ret;
 	}
 
+	/**
+	 * 设置同个时间域中选举时间服务器的最大延迟，防止抖动
+	 */
 	timingDomain.electionDelay = rtOpts.electionDelay;
 
 	/* configure PTP TimeService */
@@ -125,6 +134,9 @@ main(int argc, char **argv)
 	}
 
 	timingDomain.init(&timingDomain);
+	/**
+	 * 定义协议的各状态更新时间为1个时间单位，即一个US_TIMER_INTERVAL(62500us)
+	 */
 	timingDomain.updateInterval = 1;
 
 	startupInProgress = FALSE;
@@ -133,6 +145,9 @@ main(int argc, char **argv)
 	G_ptpClock = ptpClock;
 
 	/* do the protocol engine */
+	/**
+	 * 进入基于状态机的协议实现，无限循环
+	 */
 	protocol(&rtOpts, ptpClock);
 	/* forever loop.. */
 
