@@ -1,0 +1,9 @@
+dist: trusty
+before_install:
+    - sudo apt-get update -qq
+script:
+    - ./configure --enable-runtime-debug --enable-debug-level=all
+    - make
+    - sudo make install
+group: stable
+os: linux
